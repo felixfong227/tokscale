@@ -52,6 +52,7 @@ pub struct ParsedMessage {
     pub cache_read: i64,
     pub cache_write: i64,
     pub reasoning: i64,
+    pub cost: f64,
     pub agent: Option<String>,
 }
 
@@ -582,6 +583,7 @@ fn unified_to_parsed(msg: &UnifiedMessage) -> ParsedMessage {
         cache_read: msg.tokens.cache_read,
         cache_write: msg.tokens.cache_write,
         reasoning: msg.tokens.reasoning,
+        cost: msg.cost,
         agent: msg.agent.clone(),
     }
 }

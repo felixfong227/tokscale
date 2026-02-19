@@ -6,6 +6,11 @@ use rayon::prelude::*;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
+/// Get XDG_DATA_HOME or fall back to ~/.local/share
+fn get_xdg_data_home(home_dir: &str) -> String {
+    std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home_dir))
+}
+
 /// Session source type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionType {
@@ -205,8 +210,7 @@ pub fn scan_all_sources(home_dir: &str, sources: &[String]) -> ScanResult {
     let mut tasks: Vec<(SessionType, String, &str)> = Vec::new();
 
     if include_opencode {
-        let xdg_data =
-            std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home_dir));
+        let xdg_data = get_xdg_data_home(home_dir);
 
         // OpenCode 1.2+: SQLite database at ~/.local/share/opencode/opencode.db
         let opencode_db_path = PathBuf::from(format!("{}/opencode/opencode.db", xdg_data));
@@ -260,8 +264,7 @@ pub fn scan_all_sources(home_dir: &str, sources: &[String]) -> ScanResult {
 
     if include_amp {
         // Amp: ~/.local/share/amp/threads/T-*.json
-        let xdg_data =
-            std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home_dir));
+        let xdg_data = get_xdg_data_home(home_dir);
         let amp_path = format!("{}/amp/threads", xdg_data);
         tasks.push((SessionType::Amp, amp_path, "T-*.json"));
     }
@@ -302,8 +305,7 @@ pub fn scan_all_sources(home_dir: &str, sources: &[String]) -> ScanResult {
 
     if include_kilo {
         // Kilocode: ~/.local/share/kilo/storage/message/*/*.json
-        let xdg_data =
-            std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", home_dir));
+        let xdg_data = get_xdg_data_home(home_dir);
         let kilo_path = format!("{}/kilo/storage/message", xdg_data);
         tasks.push((SessionType::Kilo, kilo_path, "*.json"));
     }

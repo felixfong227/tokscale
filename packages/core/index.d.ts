@@ -174,6 +174,7 @@ export interface ParsedMessage {
   cacheRead: number
   cacheWrite: number
   reasoning: number
+  cost: number
   agent?: string
 }
 
