@@ -1100,6 +1100,13 @@ Location:
 
 Tokscale parses exported Agent Debug replay files from VS Code Copilot Chat. These files use the upstream `ChatReplayExport` shape with `prompts[].logs[]` entries.
 
+This is **not** the same as GitHub's Copilot usage metrics API / NDJSON export:
+- the usage metrics APIs are enterprise / organization / user reporting feeds
+- they expose daily telemetry aggregates for adoption, chat modes, models, and code generation
+- they do **not** provide the local per-session Agent Debug `.chatreplay.json` export that tokscale uses today
+
+In other words: the GitHub metrics docs are useful for understanding Copilot reporting, but they do not replace the local VS Code Agent Debug export path that tokscale currently supports.
+
 Tokscale counts only log entries that include request `metadata.usage`:
 - `prompt_tokens` → input tokens
 - `completion_tokens` → output tokens
