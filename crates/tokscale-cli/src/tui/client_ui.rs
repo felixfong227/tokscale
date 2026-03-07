@@ -59,12 +59,12 @@ pub const CLIENT_UI: [ClientUi; ClientId::COUNT] = [
         hotkey: 'k',
     },
     ClientUi {
-        display_name: "Copilot",
-        hotkey: 'c',
-    },
-    ClientUi {
         display_name: "Mux",
         hotkey: 'x',
+    },
+    ClientUi {
+        display_name: "Copilot",
+        hotkey: 'c',
     },
 ];
 
