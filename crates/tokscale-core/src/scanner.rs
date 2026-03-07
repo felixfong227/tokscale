@@ -106,6 +106,7 @@ pub fn scan_directory(root: &str, pattern: &str) -> Vec<PathBuf> {
                 "*.json" => file_name.ends_with(".json"),
                 "*.jsonl" => file_name.ends_with(".jsonl"),
                 "*.csv" => file_name.ends_with(".csv"),
+                "*.chatreplay.json" => file_name.ends_with(".chatreplay.json"),
                 "usage*.csv" => {
                     if is_in_archive_dir {
                         return false;
@@ -603,6 +604,16 @@ mod tests {
         File::create(server.join("ui_messages.json")).unwrap();
     }
 
+    fn setup_mock_copilot_dir(base: &std::path::Path) {
+        let copilot_path = base.join(".config/tokscale/copilot-debug");
+        fs::create_dir_all(&copilot_path).unwrap();
+        let mut file = File::create(
+            copilot_path.join("copilot_all_prompts_2026-03-07T11-23-48.chatreplay.json"),
+        )
+        .unwrap();
+        file.write_all(b"{}").unwrap();
+    }
+
     #[test]
     #[serial]
     fn test_headless_roots_default() {
@@ -848,5 +859,19 @@ mod tests {
             .get(ClientId::KiloCode)
             .iter()
             .all(|p| p.ends_with("ui_messages.json")));
+    }
+
+    #[test]
+    fn test_scan_all_clients_copilot() {
+        let dir = TempDir::new().unwrap();
+        let home = dir.path();
+        setup_mock_copilot_dir(home);
+
+        let result = scan_all_clients(home.to_str().unwrap(), &["copilot".to_string()]);
+        assert_eq!(result.get(ClientId::Copilot).len(), 1);
+        assert!(result.get(ClientId::Copilot)[0]
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".chatreplay.json")));
     }
 }

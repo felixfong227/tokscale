@@ -78,6 +78,9 @@ struct Cli {
     #[arg(long, help = "Show only Kilo usage")]
     kilocode: bool,
 
+    #[arg(long, help = "Show only Copilot usage")]
+    copilot: bool,
+
     #[arg(long, help = "Show only Mux usage")]
     mux: bool,
 
@@ -151,6 +154,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -211,6 +216,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -283,6 +290,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -332,6 +341,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -377,6 +388,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -444,6 +457,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -529,6 +544,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -561,6 +577,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -609,6 +626,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -634,6 +652,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -690,6 +709,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -715,6 +735,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -736,6 +757,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -759,6 +781,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -789,6 +812,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -813,6 +837,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -843,6 +868,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             short,
@@ -865,6 +891,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -894,6 +921,7 @@ fn main() -> Result<()> {
                 qwen: cli.qwen,
                 roocode: cli.roocode,
                 kilocode: cli.kilocode,
+                copilot: cli.copilot,
                 mux: cli.mux,
                 synthetic: cli.synthetic,
             });
@@ -963,6 +991,7 @@ struct ClientFlags {
     qwen: bool,
     roocode: bool,
     kilocode: bool,
+    copilot: bool,
     mux: bool,
     synthetic: bool,
 }
@@ -984,6 +1013,7 @@ fn build_client_filter(flags: ClientFlags) -> Option<Vec<String>> {
         (ClientId::Qwen, flags.qwen),
         (ClientId::RooCode, flags.roocode),
         (ClientId::KiloCode, flags.kilocode),
+        (ClientId::Copilot, flags.copilot),
         (ClientId::Mux, flags.mux),
     ]
     .into_iter()
@@ -3324,6 +3354,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3346,6 +3377,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3371,6 +3403,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3400,6 +3433,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: true,
         };
@@ -3425,13 +3459,14 @@ mod tests {
             qwen: true,
             roocode: true,
             kilocode: true,
+            copilot: true,
             mux: true,
             synthetic: true,
         };
         let result = build_client_filter(flags);
         assert!(result.is_some());
         let sources = result.unwrap();
-        assert_eq!(sources.len(), 15);
+        assert_eq!(sources.len(), 16);
         assert!(sources.contains(&"opencode".to_string()));
         assert!(sources.contains(&"claude".to_string()));
         assert!(sources.contains(&"codex".to_string()));
@@ -3445,6 +3480,7 @@ mod tests {
         assert!(sources.contains(&"qwen".to_string()));
         assert!(sources.contains(&"roocode".to_string()));
         assert!(sources.contains(&"kilocode".to_string()));
+        assert!(sources.contains(&"copilot".to_string()));
         assert!(sources.contains(&"mux".to_string()));
         assert!(sources.contains(&"synthetic".to_string()));
     }

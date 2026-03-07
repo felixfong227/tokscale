@@ -91,6 +91,49 @@ fn create_empty_fixture_dir() -> TempDir {
     tmp
 }
 
+/// Create a temporary directory with a Copilot chat replay export.
+fn create_copilot_fixture_dir() -> TempDir {
+    let tmp = TempDir::new().expect("failed to create temp dir");
+    let base = tmp.path();
+    let copilot_dir = base.join(".config/tokscale/copilot-debug");
+    fs::create_dir_all(&copilot_dir).unwrap();
+
+    let export = r#"{
+        "exportedAt": "2026-03-07T11:23:48Z",
+        "totalPrompts": 1,
+        "totalLogEntries": 1,
+        "prompts": [
+            {
+                "prompt": "Investigate this bug",
+                "logCount": 1,
+                "logs": [
+                    {
+                        "id": "log-1",
+                        "kind": "request",
+                        "metadata": {
+                            "model": "claude-sonnet-4.5",
+                            "startTime": "2026-03-07T11:20:00Z",
+                            "usage": {
+                                "prompt_tokens": 321,
+                                "completion_tokens": 123,
+                                "total_tokens": 444
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    fs::write(
+        copilot_dir.join("copilot_all_prompts_2026-03-07T11-23-48.chatreplay.json"),
+        export,
+    )
+    .unwrap();
+
+    tmp
+}
+
 /// Build a Command pointing HOME at the given temp dir, with --no-spinner and --opencode flags.
 fn cmd_with_home(tmp: &Path) -> Command {
     let mut cmd = cargo_bin_cmd!("tokscale");
@@ -335,6 +378,18 @@ fn test_monthly_with_date_filters() {
         .assert()
         .success()
         .stdout(predicate::str::contains("2025-01"));
+}
+
+#[test]
+fn test_models_with_copilot_chatreplay_export() {
+    let tmp = create_copilot_fixture_dir();
+    cmd_with_home(tmp.path())
+        .args(["models", "--json", "--copilot", "--no-spinner"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("claude-sonnet-4-5"))
+        .stdout(predicate::str::contains("copilot"))
+        .stdout(predicate::str::contains("github-copilot"));
 }
 
 #[test]
