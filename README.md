@@ -1100,6 +1100,17 @@ Location:
 
 Tokscale parses exported Agent Debug replay files from VS Code Copilot Chat. These files use the upstream `ChatReplayExport` shape with `prompts[].logs[]` entries.
 
+Tokscale can also prepare this flow for you from the CLI:
+
+```bash
+tokscale copilot export
+```
+
+- the command picks a `.chatreplay.json` path inside `~/.config/tokscale/copilot-debug/` (or `TOKSCALE_COPILOT_EXPORT_DIR`)
+- it prints the exact `Chat Debug` export steps and waits until a valid replay file appears at that path
+- pass `--output /custom/path/file.chatreplay.json` to choose the destination yourself
+- pass `--no-wait` to print the destination path and return immediately
+
 How to get a `.chatreplay.json` file:
 - In recent upstream VS Code Copilot Chat sources, the request log is kept in memory by `RequestLogger`, so reloading the editor clears the debug session unless you export first
 - open the main Copilot chat panel, then use the developer action `Show Chat Debug View` to reveal the `Chat Debug` sidebar view

@@ -3,6 +3,8 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 use tempfile::TempDir;
 
 // ── Fixture helpers ────────────────────────────────────────────────────────
@@ -222,6 +224,15 @@ fn test_graph_command_help() {
 }
 
 #[test]
+fn test_copilot_export_command_help() {
+    let mut cmd = cargo_bin_cmd!("tokscale");
+    cmd.args(["copilot", "export", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Prepare and wait for a Copilot"));
+}
+
+#[test]
 fn test_tui_command_help() {
     let mut cmd = cargo_bin_cmd!("tokscale");
     cmd.arg("tui")
@@ -390,6 +401,99 @@ fn test_models_with_copilot_chatreplay_export() {
         .stdout(predicate::str::contains("claude-sonnet-4-5"))
         .stdout(predicate::str::contains("copilot"))
         .stdout(predicate::str::contains("github-copilot"));
+}
+
+#[test]
+fn test_copilot_export_no_wait_json_output() {
+    let tmp = create_empty_fixture_dir();
+    let output = cmd_with_home(tmp.path())
+        .args(["copilot", "export", "--no-wait", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["status"], "ready");
+    let output_path = json["outputPath"].as_str().unwrap();
+    assert!(output_path.ends_with(".chatreplay.json"));
+    assert!(
+        output_path.contains(".config/tokscale/copilot-debug"),
+        "expected default copilot export dir, got {output_path}"
+    );
+}
+
+#[test]
+fn test_copilot_export_valid_existing_file_json_output() {
+    let tmp = create_copilot_fixture_dir();
+    let output_path = tmp
+        .path()
+        .join(".config/tokscale/copilot-debug/copilot_all_prompts_2026-03-07T11-23-48.chatreplay.json");
+
+    let output = cmd_with_home(tmp.path())
+        .args(["copilot", "export", "--json", "--output"])
+        .arg(output_path.to_str().unwrap())
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["status"], "validated");
+    assert_eq!(json["prompts"], 1);
+    assert_eq!(json["logEntries"], 1);
+    assert_eq!(json["usageEntries"], 1);
+}
+
+#[test]
+fn test_copilot_export_waits_for_file() {
+    let tmp = create_empty_fixture_dir();
+    let output_path = tmp
+        .path()
+        .join(".config/tokscale/copilot-debug/copilot_wait_test.chatreplay.json");
+    let fixture = r#"{
+        "exportedAt": "2026-03-07T11:23:48Z",
+        "totalPrompts": 1,
+        "totalLogEntries": 1,
+        "prompts": [
+            {
+                "prompt": "Investigate this bug",
+                "logCount": 1,
+                "logs": [
+                    {
+                        "id": "log-1",
+                        "kind": "request",
+                        "metadata": {
+                            "model": "claude-sonnet-4.5",
+                            "startTime": "2026-03-07T11:20:00Z",
+                            "usage": {
+                                "prompt_tokens": 321,
+                                "completion_tokens": 123,
+                                "total_tokens": 444
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }"#;
+
+    let output_path_for_writer = output_path.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(500));
+        fs::write(output_path_for_writer, fixture).unwrap();
+    });
+
+    cmd_with_home(tmp.path())
+        .args([
+            "copilot",
+            "export",
+            "--output",
+            output_path.to_str().unwrap(),
+            "--timeout-seconds",
+            "5",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Export captured"));
 }
 
 #[test]

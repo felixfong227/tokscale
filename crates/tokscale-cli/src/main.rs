@@ -477,10 +477,33 @@ enum Commands {
         #[arg(long, help = "Disable loading spinner (for scripting)")]
         no_spinner: bool,
     },
+    #[command(about = "VS Code Copilot replay export helpers")]
+    Copilot {
+        #[command(subcommand)]
+        subcommand: CopilotSubcommand,
+    },
     #[command(about = "Cursor IDE integration commands")]
     Cursor {
         #[command(subcommand)]
         subcommand: CursorSubcommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum CopilotSubcommand {
+    #[command(about = "Prepare and wait for a Copilot `.chatreplay.json` export")]
+    Export {
+        #[arg(
+            long,
+            help = "Output file path (default: TOKSCALE_COPILOT_EXPORT_DIR or ~/.config/tokscale/copilot-debug)"
+        )]
+        output: Option<String>,
+        #[arg(long, help = "Return after printing the target path without waiting")]
+        no_wait: bool,
+        #[arg(long, help = "Fail if no valid export appears within N seconds")]
+        timeout_seconds: Option<u64>,
+        #[arg(long, help = "Output status as JSON")]
+        json: bool,
     },
 }
 
@@ -905,6 +928,7 @@ fn main() -> Result<()> {
                 disable_pinned,
             )
         }
+        Some(Commands::Copilot { subcommand }) => run_copilot_command(subcommand),
         Some(Commands::Cursor { subcommand }) => run_cursor_command(subcommand),
         None => {
             let clients = build_client_filter(ClientFlags {
@@ -1032,6 +1056,36 @@ fn build_client_filter(flags: ClientFlags) -> Option<Vec<String>> {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CopilotExportStatus {
+    status: &'static str,
+    output_path: String,
+    export_dir: String,
+    prompts: Option<usize>,
+    log_entries: Option<usize>,
+    usage_entries: Option<usize>,
+    command_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CopilotExportSummary {
+    prompts: usize,
+    log_entries: usize,
+    usage_entries: usize,
+}
+
+fn run_copilot_command(subcommand: CopilotSubcommand) -> Result<()> {
+    match subcommand {
+        CopilotSubcommand::Export {
+            output,
+            no_wait,
+            timeout_seconds,
+            json,
+        } => run_copilot_export_command(output, no_wait, timeout_seconds, json),
+    }
+}
+
 fn build_date_filter(
     today: bool,
     week: bool,
@@ -1080,6 +1134,99 @@ fn normalize_year_filter(
     } else {
         year
     }
+}
+
+fn resolve_copilot_export_output_path(output: Option<String>) -> Result<PathBuf> {
+    use chrono::Utc;
+    use tokscale_core::ClientId;
+
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let export_dir = PathBuf::from(ClientId::Copilot.data().resolve_path(&home_dir.to_string_lossy()));
+
+    let output_path = match output {
+        Some(custom_output) => PathBuf::from(custom_output),
+        None => {
+            let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+            export_dir.join(format!("copilot_all_prompts_{}.chatreplay.json", timestamp))
+        }
+    };
+
+    let output_path = if output_path.extension().is_none()
+        && !output_path
+            .to_string_lossy()
+            .ends_with(".chatreplay.json")
+    {
+        PathBuf::from(format!("{}.chatreplay.json", output_path.to_string_lossy()))
+    } else {
+        output_path
+    };
+
+    let parent = output_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    std::fs::create_dir_all(&parent)?;
+    Ok(output_path)
+}
+
+fn inspect_copilot_export(path: &Path) -> Result<CopilotExportSummary> {
+    let bytes = std::fs::read(path)?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let prompts = value
+        .get("prompts")
+        .and_then(|prompts| prompts.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Missing `prompts` array"))?;
+    let log_entries = prompts
+        .iter()
+        .map(|prompt| {
+            prompt
+                .get("logs")
+                .and_then(|logs| logs.as_array())
+                .map_or(0, Vec::len)
+        })
+        .sum();
+    let usage_entries = tokscale_core::sessions::copilot::parse_copilot_file(path).len();
+
+    Ok(CopilotExportSummary {
+        prompts: prompts.len(),
+        log_entries,
+        usage_entries,
+    })
+}
+
+fn print_copilot_export_instructions(output_path: &Path) {
+    use colored::Colorize;
+
+    println!("\n  {}", "Copilot replay export".cyan());
+    println!(
+        "  {}",
+        format!("output: {}", output_path.display()).bright_black()
+    );
+    println!(
+        "  {}",
+        "1. In VS Code, open Copilot Chat and run `Show Chat Debug View`.".bright_black()
+    );
+    println!(
+        "  {}",
+        "2. In the Chat Debug view title bar, choose `Export All Prompt Logs as JSON...`."
+            .bright_black()
+    );
+    println!(
+        "  {}",
+        format!("3. Save the export to {}", output_path.display()).bright_black()
+    );
+    println!(
+        "  {}",
+        "4. Export before reloading the editor; the Copilot request log is memory-only."
+            .bright_black()
+    );
+    println!(
+        "  {}",
+        "command ids: github.copilot.debug.showChatLogView, github.copilot.chat.debug.exportAllPromptLogsAsJson"
+            .bright_black()
+    );
+    println!();
 }
 
 fn get_date_range_label(
@@ -3128,6 +3275,128 @@ fn run_submit_command(
     }
 
     Ok(())
+}
+
+fn run_copilot_export_command(
+    output: Option<String>,
+    no_wait: bool,
+    timeout_seconds: Option<u64>,
+    json: bool,
+) -> Result<()> {
+    use colored::Colorize;
+
+    let output_path = resolve_copilot_export_output_path(output)?;
+    let export_dir = output_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let command_ids = vec![
+        "github.copilot.debug.showChatLogView",
+        "github.copilot.chat.debug.exportAllPromptLogsAsJson",
+    ];
+
+    if let Ok(summary) = inspect_copilot_export(&output_path) {
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&CopilotExportStatus {
+                    status: "validated",
+                    output_path: output_path.to_string_lossy().to_string(),
+                    export_dir: export_dir.to_string_lossy().to_string(),
+                    prompts: Some(summary.prompts),
+                    log_entries: Some(summary.log_entries),
+                    usage_entries: Some(summary.usage_entries),
+                    command_ids,
+                })?
+            );
+        } else {
+            println!("\n  {}", "Copilot replay export".cyan());
+            println!(
+                "  {}",
+                format!("✓ Found valid export at {}", output_path.display()).green()
+            );
+            println!(
+                "  {}",
+                format!(
+                    "{} prompts, {} log entries, {} usage rows",
+                    summary.prompts, summary.log_entries, summary.usage_entries
+                )
+                .bright_black()
+            );
+            println!();
+        }
+        return Ok(());
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&CopilotExportStatus {
+                status: "ready",
+                output_path: output_path.to_string_lossy().to_string(),
+                export_dir: export_dir.to_string_lossy().to_string(),
+                prompts: None,
+                log_entries: None,
+                usage_entries: None,
+                command_ids,
+            })?
+        );
+    } else {
+        print_copilot_export_instructions(&output_path);
+    }
+
+    if no_wait {
+        return Ok(());
+    }
+
+    let started_at = std::time::Instant::now();
+    loop {
+        if let Ok(summary) = inspect_copilot_export(&output_path) {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&CopilotExportStatus {
+                        status: "validated",
+                        output_path: output_path.to_string_lossy().to_string(),
+                        export_dir: export_dir.to_string_lossy().to_string(),
+                        prompts: Some(summary.prompts),
+                        log_entries: Some(summary.log_entries),
+                        usage_entries: Some(summary.usage_entries),
+                        command_ids: vec![
+                            "github.copilot.debug.showChatLogView",
+                            "github.copilot.chat.debug.exportAllPromptLogsAsJson",
+                        ],
+                    })?
+                );
+            } else {
+                println!(
+                    "  {}",
+                    format!("✓ Export captured at {}", output_path.display()).green()
+                );
+                println!(
+                    "  {}",
+                    format!(
+                        "{} prompts, {} log entries, {} usage rows",
+                        summary.prompts, summary.log_entries, summary.usage_entries
+                    )
+                    .bright_black()
+                );
+                println!();
+            }
+            return Ok(());
+        }
+
+        if let Some(timeout) = timeout_seconds {
+            if started_at.elapsed() >= Duration::from_secs(timeout) {
+                anyhow::bail!(
+                    "Timed out waiting for a valid Copilot export at {}",
+                    output_path.display()
+                );
+            }
+        }
+
+        thread::sleep(Duration::from_millis(500));
+    }
 }
 
 fn run_cursor_command(subcommand: CursorSubcommand) -> Result<()> {
