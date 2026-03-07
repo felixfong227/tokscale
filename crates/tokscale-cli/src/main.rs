@@ -1145,38 +1145,36 @@ fn normalize_year_filter(
     }
 }
 
-fn resolve_copilot_export_output_path(output: Option<String>) -> Result<PathBuf> {
+fn resolve_copilot_export_output_path(output: Option<String>) -> Result<(PathBuf, PathBuf)> {
     use chrono::Utc;
     use tokscale_core::ClientId;
 
     let home_dir =
         dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
-    let export_dir = PathBuf::from(ClientId::Copilot.data().resolve_path(&home_dir.to_string_lossy()));
+    let default_export_dir =
+        PathBuf::from(ClientId::Copilot.data().resolve_path(&home_dir.to_string_lossy()));
 
     let output_path = match output {
         Some(custom_output) => PathBuf::from(custom_output),
         None => {
             let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
-            export_dir.join(format!("copilot_all_prompts_{}.chatreplay.json", timestamp))
+            default_export_dir.join(format!("copilot_all_prompts_{}.chatreplay.json", timestamp))
         }
     };
 
-    let output_path = if output_path.extension().is_none()
-        && !output_path
-            .to_string_lossy()
-            .ends_with(".chatreplay.json")
-    {
-        PathBuf::from(format!("{}.chatreplay.json", output_path.to_string_lossy()))
+    let output_path_str = output_path.to_string_lossy();
+    let output_path = if !output_path_str.ends_with(".chatreplay.json") {
+        PathBuf::from(format!("{}.chatreplay.json", output_path_str))
     } else {
         output_path
     };
 
-    let parent = output_path
+    let export_dir = output_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
-    std::fs::create_dir_all(&parent)?;
-    Ok(output_path)
+    std::fs::create_dir_all(&export_dir)?;
+    Ok((output_path, export_dir))
 }
 
 fn inspect_copilot_export(path: &Path) -> Result<CopilotExportSummary> {
@@ -3297,11 +3295,7 @@ fn run_copilot_export_command(
 ) -> Result<()> {
     use colored::Colorize;
 
-    let output_path = resolve_copilot_export_output_path(output)?;
-    let export_dir = output_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
+    let (output_path, export_dir) = resolve_copilot_export_output_path(output)?;
     let command_ids = COPILOT_EXPORT_COMMAND_IDS.to_vec();
 
     if let Ok(summary) = inspect_copilot_export(&output_path) {
@@ -3360,36 +3354,38 @@ fn run_copilot_export_command(
 
     let started_at = std::time::Instant::now();
     loop {
-        if let Ok(summary) = inspect_copilot_export(&output_path) {
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&CopilotExportStatus {
-                        status: "validated",
-                        output_path: output_path.to_string_lossy().to_string(),
-                        export_dir: export_dir.to_string_lossy().to_string(),
-                        prompts: Some(summary.prompts),
-                        log_entries: Some(summary.log_entries),
-                        usage_entries: Some(summary.usage_entries),
-                        command_ids: COPILOT_EXPORT_COMMAND_IDS.to_vec(),
-                    })?
-                );
-            } else {
-                println!(
-                    "  {}",
-                    format!("✓ Export captured at {}", output_path.display()).green()
-                );
-                println!(
-                    "  {}",
-                    format!(
-                        "{} prompts, {} log entries, {} usage rows",
-                        summary.prompts, summary.log_entries, summary.usage_entries
-                    )
-                    .bright_black()
-                );
-                println!();
+        if output_path.exists() {
+            if let Ok(summary) = inspect_copilot_export(&output_path) {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&CopilotExportStatus {
+                            status: "validated",
+                            output_path: output_path.to_string_lossy().to_string(),
+                            export_dir: export_dir.to_string_lossy().to_string(),
+                            prompts: Some(summary.prompts),
+                            log_entries: Some(summary.log_entries),
+                            usage_entries: Some(summary.usage_entries),
+                            command_ids: COPILOT_EXPORT_COMMAND_IDS.to_vec(),
+                        })?
+                    );
+                } else {
+                    println!(
+                        "  {}",
+                        format!("✓ Export captured at {}", output_path.display()).green()
+                    );
+                    println!(
+                        "  {}",
+                        format!(
+                            "{} prompts, {} log entries, {} usage rows",
+                            summary.prompts, summary.log_entries, summary.usage_entries
+                        )
+                        .bright_black()
+                    );
+                    println!();
+                }
+                return Ok(());
             }
-            return Ok(());
         }
 
         if let Some(timeout) = timeout_seconds {

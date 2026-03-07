@@ -7,6 +7,9 @@ use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
 
+// Intentionally a little longer than the production 500ms poll interval in
+// `COPILOT_EXPORT_POLL_INTERVAL` so the command performs at least one wait
+// cycle before the fixture appears.
 const COPILOT_EXPORT_TEST_WRITE_DELAY: Duration = Duration::from_millis(600);
 
 // ── Fixture helpers ────────────────────────────────────────────────────────
