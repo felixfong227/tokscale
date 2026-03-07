@@ -66,6 +66,7 @@
 | <img width="48px" src=".github/assets/client-roocode.png" alt="Roo Code" /> | [Roo Code](https://github.com/RooCodeInc/Roo-Code) | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/rooveterinaryinc.roo-cline/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-kilocode.png" alt="Kilo" /> | [Kilo](https://github.com/Kilo-Org/kilocode) | `~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-mux.png" alt="Mux" /> | [Mux](https://github.com/coder/mux) | `~/.mux/sessions/` | ✅ Yes |
+| — | [VS Code Copilot](https://code.visualstudio.com/docs/copilot/chat/copilot-chat) | Exported Agent Debug `.chatreplay.json` files in `~/.config/tokscale/copilot-debug/` (or `TOKSCALE_COPILOT_EXPORT_DIR`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-synthetic.png" alt="Synthetic" /> | [Synthetic](https://synthetic.new/) | Re-attributed from other sources via `hf:` model prefix or `synthetic` provider (+ [Octofriend](https://github.com/synthetic-lab/octofriend): `~/.local/share/octofriend/sqlite.db`) | ✅ Yes |
 
 Get real-time pricing calculations using [🚅 LiteLLM's pricing data](https://github.com/BerriAI/litellm), with support for tiered pricing models and cache token discounts.
@@ -131,7 +132,7 @@ In the age of AI-assisted development, **tokens are the new energy**. They power
   - GitHub-style contribution graph with 9 color themes
   - Real-time filtering and sorting
   - Zero flicker rendering (native Zig engine)
-- **Multi-platform support** - Track usage across OpenCode, Claude Code, Codex CLI, Cursor IDE, Gemini CLI, Amp, Droid, OpenClaw, Pi, Kimi CLI, Qwen CLI, Roo Code, Kilo, Mux, and Synthetic
+- **Multi-platform support** - Track usage across OpenCode, Claude Code, Codex CLI, Cursor IDE, Gemini CLI, Amp, Droid, OpenClaw, Pi, Kimi CLI, Qwen CLI, Roo Code, Kilo, Mux, VS Code Copilot, and Synthetic
 - **Real-time pricing** - Fetches current pricing from LiteLLM with 1-hour disk cache; automatic OpenRouter fallback and Cursor model pricing for newly released models
 - **Detailed breakdowns** - Input, output, cache read/write, and reasoning token tracking
 - **Native Rust core** - All parsing and aggregation done in Rust for 10x faster processing
@@ -320,6 +321,9 @@ tokscale --roocode
 
 # Show only Kilo usage
 tokscale --kilocode
+
+# Show only Copilot usage
+tokscale --copilot
 
 # Show only Mux usage
 tokscale --mux
@@ -576,7 +580,7 @@ The frontend provides a GitHub-style contribution graph visualization:
 - **Interactive tooltips**: Hover for detailed daily breakdowns
 - **Day breakdown panel**: Click to see per-source and per-model details
 - **Year filtering**: Navigate between years
-- **Source filtering**: Filter by platform (OpenCode, Claude, Codex, Cursor, Gemini, Amp, Droid, OpenClaw, Pi, Kimi, Qwen, Roo Code, Kilo, Mux, Synthetic)
+- **Source filtering**: Filter by platform (OpenCode, Claude, Codex, Cursor, Gemini, Amp, Droid, OpenClaw, Pi, Kimi, Qwen, Roo Code, Kilo, Mux, Copilot, Synthetic)
 - **Stats panel**: Total cost, tokens, active days, streaks
 - **FOUC prevention**: Theme applied before React hydrates (no flash)
 
@@ -859,6 +863,7 @@ AI coding tools store their session data in cross-platform locations. Most tools
 | Roo Code | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/` | `%USERPROFILE%\.config\Code\User\globalStorage\rooveterinaryinc.roo-cline\tasks\` | VS Code globalStorage task logs |
 | Kilo | `~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks/` | `%USERPROFILE%\.config\Code\User\globalStorage\kilocode.kilo-code\tasks\` | VS Code globalStorage task logs |
 | Mux | `~/.mux/sessions/` | `%USERPROFILE%\.mux\sessions\` | Same path on all platforms |
+| VS Code Copilot | `~/.config/tokscale/copilot-debug/` | `%USERPROFILE%\.config\tokscale\copilot-debug\` | Export `.chatreplay.json` files here, or set `TOKSCALE_COPILOT_EXPORT_DIR` |
 | Synthetic | Re-attributed from other sources | Re-attributed from other sources | Detects `hf:` model prefix + `synthetic` provider |
 
 > **Note**: On Windows, `~` expands to `%USERPROFILE%` (e.g., `C:\Users\YourName`). These tools intentionally use Unix-style paths (like `.local/share`) even on Windows for cross-platform consistency, rather than Windows-native paths like `%APPDATA%`.
@@ -1086,6 +1091,47 @@ Kilo uses the same task log shape as Roo Code. Tokscale applies the same rules:
 - count only `say/api_req_started` events from `ui_messages.json`
 - parse `tokensIn`, `tokensOut`, `cacheReads`, `cacheWrites`, `cost`, and `apiProtocol` from `text` JSON
 - enrich model/agent metadata from sibling `api_conversation_history.json` when available
+
+### VS Code Copilot
+
+Location:
+- Default: `~/.config/tokscale/copilot-debug/*.chatreplay.json`
+- Override: set `TOKSCALE_COPILOT_EXPORT_DIR` to the directory containing exported replay files
+
+Tokscale parses exported Agent Debug replay files from VS Code Copilot Chat. These files use the upstream `ChatReplayExport` shape with `prompts[].logs[]` entries.
+
+Tokscale can also prepare this flow for you from the CLI:
+
+```bash
+tokscale copilot export
+```
+
+- the command picks a `.chatreplay.json` path inside `~/.config/tokscale/copilot-debug/` (or `TOKSCALE_COPILOT_EXPORT_DIR`)
+- it prints the exact `Chat Debug` export steps and waits until a valid replay file appears at that path
+- pass `--output /custom/path/file.chatreplay.json` to choose the destination yourself
+- pass `--no-wait` to print the destination path and return immediately
+
+How to get a `.chatreplay.json` file:
+- In recent upstream VS Code Copilot Chat sources, the request log is kept in memory by `RequestLogger`, so reloading the editor clears the debug session unless you export first
+- open the main Copilot chat panel, then use the developer action `Show Chat Debug View` to reveal the `Chat Debug` sidebar view
+- in the `Chat Debug` view title bar, run `Export All Prompt Logs as JSON...` to save every captured prompt to a `.chatreplay.json` file before reloading the editor
+- per-prompt export is also available from the `Chat Debug` tree as `Export All as JSON...`
+- those commands open a save dialog and write a `.chatreplay.json` export for the current prompt or all prompts
+- save the exported file into `~/.config/tokscale/copilot-debug/`, or any directory pointed to by `TOKSCALE_COPILOT_EXPORT_DIR`
+- if your VS Code build exposes command IDs instead of titles, look for `github.copilot.debug.showChatLogView`, `github.copilot.chat.debug.exportAllPromptLogsAsJson`, or `github.copilot.chat.debug.exportPromptLogsAsJson`
+
+This is **not** the same as GitHub's Copilot usage metrics API / NDJSON export:
+- the usage metrics APIs are enterprise / organization / user reporting feeds
+- they expose daily telemetry aggregates for adoption, chat modes, models, and code generation
+- they do **not** provide the local per-session Agent Debug `.chatreplay.json` export that tokscale uses today
+
+In other words: the GitHub metrics docs are useful for understanding Copilot reporting, but they do not replace the local VS Code Agent Debug export path that tokscale currently supports.
+
+Tokscale counts only log entries that include request `metadata.usage`:
+- `prompt_tokens` → input tokens
+- `completion_tokens` → output tokens
+- `metadata.model` → model ID
+- `metadata.startTime`, `time`, or `timestamp` → request timestamp
 
 ### Mux
 

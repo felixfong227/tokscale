@@ -707,6 +707,28 @@ fn parse_all_messages_with_pricing(
         .collect();
     all_messages.extend(mux_messages);
 
+    let copilot_messages: Vec<UnifiedMessage> = scan_result
+        .get(ClientId::Copilot)
+        .par_iter()
+        .flat_map(|path| {
+            sessions::copilot::parse_copilot_file(path)
+                .into_iter()
+                .map(|mut msg| {
+                    msg.cost = pricing.calculate_cost(
+                        &msg.model_id,
+                        msg.tokens.input,
+                        msg.tokens.output,
+                        msg.tokens.cache_read,
+                        msg.tokens.cache_write,
+                        msg.tokens.reasoning,
+                    );
+                    msg
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    all_messages.extend(copilot_messages);
+
     if include_synthetic {
         if let Some(db_path) = &scan_result.synthetic_db {
             let synthetic_messages: Vec<UnifiedMessage> =
@@ -1254,6 +1276,20 @@ pub fn parse_local_clients(options: LocalParseOptions) -> Result<ParsedMessages,
     let mux_count = mux_msgs.len() as i32;
     counts.set(ClientId::Mux, mux_count);
     messages.extend(mux_msgs);
+
+    let copilot_msgs: Vec<ParsedMessage> = scan_result
+        .get(ClientId::Copilot)
+        .par_iter()
+        .flat_map(|path| {
+            sessions::copilot::parse_copilot_file(path)
+                .into_iter()
+                .map(|msg| unified_to_parsed(&msg))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let copilot_count = copilot_msgs.len() as i32;
+    counts.set(ClientId::Copilot, copilot_count);
+    messages.extend(copilot_msgs);
 
     let mut synthetic_count: i32 = 0;
     if include_synthetic {

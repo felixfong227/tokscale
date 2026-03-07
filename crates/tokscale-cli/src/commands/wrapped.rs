@@ -1356,6 +1356,7 @@ fn client_display_name(client: &str) -> Option<&'static str> {
         "qwen" => Some("Qwen CLI"),
         "roocode" => Some("Roo Code"),
         "kilocode" => Some("Kilo"),
+        "copilot" => Some("Copilot"),
         "mux" => Some("Mux"),
         "synthetic" => Some("Synthetic"),
         _ => None,

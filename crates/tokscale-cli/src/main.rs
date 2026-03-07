@@ -14,6 +14,15 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tui::Tab;
 
+const COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND: &str = "github.copilot.debug.showChatLogView";
+const COPILOT_EXPORT_ALL_PROMPTS_COMMAND: &str =
+    "github.copilot.chat.debug.exportAllPromptLogsAsJson";
+const COPILOT_EXPORT_COMMAND_IDS: [&str; 2] = [
+    COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND,
+    COPILOT_EXPORT_ALL_PROMPTS_COMMAND,
+];
+const COPILOT_EXPORT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 #[derive(Parser)]
 #[command(name = "tokscale")]
 #[command(author, version, about = "AI token usage analytics")]
@@ -77,6 +86,9 @@ struct Cli {
 
     #[arg(long, help = "Show only Kilo usage")]
     kilocode: bool,
+
+    #[arg(long, help = "Show only Copilot usage")]
+    copilot: bool,
 
     #[arg(long, help = "Show only Mux usage")]
     mux: bool,
@@ -151,6 +163,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -211,6 +225,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -283,6 +299,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -332,6 +350,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -377,6 +397,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -444,6 +466,8 @@ enum Commands {
         roocode: bool,
         #[arg(long, help = "Show only Kilo usage")]
         kilocode: bool,
+        #[arg(long, help = "Show only Copilot usage")]
+        copilot: bool,
         #[arg(long, help = "Show only Mux usage")]
         mux: bool,
         #[arg(long, help = "Show only Synthetic usage")]
@@ -462,10 +486,33 @@ enum Commands {
         #[arg(long, help = "Disable loading spinner (for scripting)")]
         no_spinner: bool,
     },
+    #[command(about = "VS Code Copilot replay export helpers")]
+    Copilot {
+        #[command(subcommand)]
+        subcommand: CopilotSubcommand,
+    },
     #[command(about = "Cursor IDE integration commands")]
     Cursor {
         #[command(subcommand)]
         subcommand: CursorSubcommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum CopilotSubcommand {
+    #[command(about = "Prepare and wait for a Copilot `.chatreplay.json` export")]
+    Export {
+        #[arg(
+            long,
+            help = "Output file path (default: TOKSCALE_COPILOT_EXPORT_DIR or ~/.config/tokscale/copilot-debug)"
+        )]
+        output: Option<String>,
+        #[arg(long, help = "Return after printing the target path without waiting")]
+        no_wait: bool,
+        #[arg(long, help = "Fail if no valid export appears within N seconds")]
+        timeout_seconds: Option<u64>,
+        #[arg(long, help = "Output status as JSON")]
+        json: bool,
     },
 }
 
@@ -529,6 +576,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -561,6 +609,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -609,6 +658,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -634,6 +684,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -690,6 +741,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -715,6 +767,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -736,6 +789,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -759,6 +813,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -789,6 +844,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             today,
@@ -813,6 +869,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -843,6 +900,7 @@ fn main() -> Result<()> {
             qwen,
             roocode,
             kilocode,
+            copilot,
             mux,
             synthetic,
             short,
@@ -865,6 +923,7 @@ fn main() -> Result<()> {
                 qwen,
                 roocode,
                 kilocode,
+                copilot,
                 mux,
                 synthetic,
             });
@@ -878,6 +937,7 @@ fn main() -> Result<()> {
                 disable_pinned,
             )
         }
+        Some(Commands::Copilot { subcommand }) => run_copilot_command(subcommand),
         Some(Commands::Cursor { subcommand }) => run_cursor_command(subcommand),
         None => {
             let clients = build_client_filter(ClientFlags {
@@ -894,6 +954,7 @@ fn main() -> Result<()> {
                 qwen: cli.qwen,
                 roocode: cli.roocode,
                 kilocode: cli.kilocode,
+                copilot: cli.copilot,
                 mux: cli.mux,
                 synthetic: cli.synthetic,
             });
@@ -963,6 +1024,7 @@ struct ClientFlags {
     qwen: bool,
     roocode: bool,
     kilocode: bool,
+    copilot: bool,
     mux: bool,
     synthetic: bool,
 }
@@ -984,6 +1046,7 @@ fn build_client_filter(flags: ClientFlags) -> Option<Vec<String>> {
         (ClientId::Qwen, flags.qwen),
         (ClientId::RooCode, flags.roocode),
         (ClientId::KiloCode, flags.kilocode),
+        (ClientId::Copilot, flags.copilot),
         (ClientId::Mux, flags.mux),
     ]
     .into_iter()
@@ -999,6 +1062,36 @@ fn build_client_filter(flags: ClientFlags) -> Option<Vec<String>> {
         None
     } else {
         Some(clients)
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CopilotExportStatus {
+    status: &'static str,
+    output_path: String,
+    export_dir: String,
+    prompts: Option<usize>,
+    log_entries: Option<usize>,
+    usage_entries: Option<usize>,
+    command_ids: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CopilotExportSummary {
+    prompts: usize,
+    log_entries: usize,
+    usage_entries: usize,
+}
+
+fn run_copilot_command(subcommand: CopilotSubcommand) -> Result<()> {
+    match subcommand {
+        CopilotSubcommand::Export {
+            output,
+            no_wait,
+            timeout_seconds,
+            json,
+        } => run_copilot_export_command(output, no_wait, timeout_seconds, json),
     }
 }
 
@@ -1050,6 +1143,100 @@ fn normalize_year_filter(
     } else {
         year
     }
+}
+
+fn resolve_copilot_export_output_path(output: Option<String>) -> Result<(PathBuf, PathBuf)> {
+    use chrono::Utc;
+    use tokscale_core::ClientId;
+
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let default_export_dir =
+        PathBuf::from(ClientId::Copilot.data().resolve_path(&home_dir.to_string_lossy()));
+
+    let output_path = match output {
+        Some(custom_output) => PathBuf::from(custom_output),
+        None => {
+            let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+            default_export_dir.join(format!("copilot_all_prompts_{}.chatreplay.json", timestamp))
+        }
+    };
+
+    let output_path_str = output_path.to_string_lossy();
+    let output_path = if !output_path_str.ends_with(".chatreplay.json") {
+        PathBuf::from(format!("{}.chatreplay.json", output_path_str))
+    } else {
+        output_path
+    };
+
+    let export_dir = output_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    std::fs::create_dir_all(&export_dir)?;
+    Ok((output_path, export_dir))
+}
+
+fn inspect_copilot_export(path: &Path) -> Result<CopilotExportSummary> {
+    let bytes = std::fs::read(path)?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let prompts = value
+        .get("prompts")
+        .and_then(|prompts| prompts.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Missing `prompts` array"))?;
+    let log_entries = prompts
+        .iter()
+        .map(|prompt| {
+            prompt
+                .get("logs")
+                .and_then(|logs| logs.as_array())
+                .map_or(0, Vec::len)
+        })
+        .sum();
+    let usage_entries = tokscale_core::sessions::copilot::parse_copilot_file(path).len();
+
+    Ok(CopilotExportSummary {
+        prompts: prompts.len(),
+        log_entries,
+        usage_entries,
+    })
+}
+
+fn print_copilot_export_instructions(output_path: &Path) {
+    use colored::Colorize;
+
+    println!("\n  {}", "Copilot replay export".cyan());
+    println!(
+        "  {}",
+        format!("output: {}", output_path.display()).bright_black()
+    );
+    println!(
+        "  {}",
+        "1. In VS Code, open Copilot Chat and run `Show Chat Debug View`.".bright_black()
+    );
+    println!(
+        "  {}",
+        "2. In the Chat Debug view title bar, choose `Export All Prompt Logs as JSON...`."
+            .bright_black()
+    );
+    println!(
+        "  {}",
+        format!("3. Save the export to {}", output_path.display()).bright_black()
+    );
+    println!(
+        "  {}",
+        "4. Export before reloading the editor; the Copilot request log is memory-only."
+            .bright_black()
+    );
+    println!(
+        "  {}",
+        format!(
+            "command ids: {}, {}",
+            COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND, COPILOT_EXPORT_ALL_PROMPTS_COMMAND
+        )
+            .bright_black()
+    );
+    println!();
 }
 
 fn get_date_range_label(
@@ -3100,6 +3287,120 @@ fn run_submit_command(
     Ok(())
 }
 
+fn run_copilot_export_command(
+    output: Option<String>,
+    no_wait: bool,
+    timeout_seconds: Option<u64>,
+    json: bool,
+) -> Result<()> {
+    use colored::Colorize;
+
+    let (output_path, export_dir) = resolve_copilot_export_output_path(output)?;
+    let command_ids = COPILOT_EXPORT_COMMAND_IDS.to_vec();
+
+    if let Ok(summary) = inspect_copilot_export(&output_path) {
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&CopilotExportStatus {
+                    status: "validated",
+                    output_path: output_path.to_string_lossy().to_string(),
+                    export_dir: export_dir.to_string_lossy().to_string(),
+                    prompts: Some(summary.prompts),
+                    log_entries: Some(summary.log_entries),
+                    usage_entries: Some(summary.usage_entries),
+                    command_ids,
+                })?
+            );
+        } else {
+            println!("\n  {}", "Copilot replay export".cyan());
+            println!(
+                "  {}",
+                format!("✓ Found valid export at {}", output_path.display()).green()
+            );
+            println!(
+                "  {}",
+                format!(
+                    "{} prompts, {} log entries, {} usage rows",
+                    summary.prompts, summary.log_entries, summary.usage_entries
+                )
+                .bright_black()
+            );
+            println!();
+        }
+        return Ok(());
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&CopilotExportStatus {
+                status: "ready",
+                output_path: output_path.to_string_lossy().to_string(),
+                export_dir: export_dir.to_string_lossy().to_string(),
+                prompts: None,
+                log_entries: None,
+                usage_entries: None,
+                command_ids,
+            })?
+        );
+    } else {
+        print_copilot_export_instructions(&output_path);
+    }
+
+    if no_wait {
+        return Ok(());
+    }
+
+    let started_at = std::time::Instant::now();
+    loop {
+        if output_path.exists() {
+            if let Ok(summary) = inspect_copilot_export(&output_path) {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&CopilotExportStatus {
+                            status: "validated",
+                            output_path: output_path.to_string_lossy().to_string(),
+                            export_dir: export_dir.to_string_lossy().to_string(),
+                            prompts: Some(summary.prompts),
+                            log_entries: Some(summary.log_entries),
+                            usage_entries: Some(summary.usage_entries),
+                            command_ids: COPILOT_EXPORT_COMMAND_IDS.to_vec(),
+                        })?
+                    );
+                } else {
+                    println!(
+                        "  {}",
+                        format!("✓ Export captured at {}", output_path.display()).green()
+                    );
+                    println!(
+                        "  {}",
+                        format!(
+                            "{} prompts, {} log entries, {} usage rows",
+                            summary.prompts, summary.log_entries, summary.usage_entries
+                        )
+                        .bright_black()
+                    );
+                    println!();
+                }
+                return Ok(());
+            }
+        }
+
+        if let Some(timeout) = timeout_seconds {
+            if started_at.elapsed() >= Duration::from_secs(timeout) {
+                anyhow::bail!(
+                    "Timed out waiting for a valid Copilot export at {}",
+                    output_path.display()
+                );
+            }
+        }
+
+        thread::sleep(COPILOT_EXPORT_POLL_INTERVAL);
+    }
+}
+
 fn run_cursor_command(subcommand: CursorSubcommand) -> Result<()> {
     match subcommand {
         CursorSubcommand::Login { name } => cursor::run_cursor_login(name),
@@ -3324,6 +3625,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3346,6 +3648,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3371,6 +3674,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: false,
         };
@@ -3400,6 +3704,7 @@ mod tests {
             qwen: false,
             roocode: false,
             kilocode: false,
+            copilot: false,
             mux: false,
             synthetic: true,
         };
@@ -3425,13 +3730,14 @@ mod tests {
             qwen: true,
             roocode: true,
             kilocode: true,
+            copilot: true,
             mux: true,
             synthetic: true,
         };
         let result = build_client_filter(flags);
         assert!(result.is_some());
         let sources = result.unwrap();
-        assert_eq!(sources.len(), 15);
+        assert_eq!(sources.len(), 16);
         assert!(sources.contains(&"opencode".to_string()));
         assert!(sources.contains(&"claude".to_string()));
         assert!(sources.contains(&"codex".to_string()));
@@ -3445,6 +3751,7 @@ mod tests {
         assert!(sources.contains(&"qwen".to_string()));
         assert!(sources.contains(&"roocode".to_string()));
         assert!(sources.contains(&"kilocode".to_string()));
+        assert!(sources.contains(&"copilot".to_string()));
         assert!(sources.contains(&"mux".to_string()));
         assert!(sources.contains(&"synthetic".to_string()));
     }

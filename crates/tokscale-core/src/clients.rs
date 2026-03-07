@@ -36,7 +36,12 @@ pub struct ClientDef {
 
 impl ClientDef {
     pub fn resolve_path(&self, home_dir: &str) -> String {
-        format!("{}/{}", self.root.resolve(home_dir), self.relative_path)
+        let root = self.root.resolve(home_dir);
+        if self.relative_path.is_empty() {
+            root
+        } else {
+            format!("{}/{}", root, self.relative_path)
+        }
     }
 }
 
@@ -219,6 +224,17 @@ define_clients!(
         pattern: "session-usage.json",
         headless: false,
         parse_local: true
+    },
+    Copilot = 14 => {
+        id: "copilot",
+        root: PathRoot::EnvVar {
+            var: "TOKSCALE_COPILOT_EXPORT_DIR",
+            fallback_relative: ".config/tokscale/copilot-debug",
+        },
+        relative: "",
+        pattern: "*.chatreplay.json",
+        headless: false,
+        parse_local: true
     }
 );
 
@@ -271,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_client_id_count() {
-        assert_eq!(ClientId::COUNT, 14);
+        assert_eq!(ClientId::COUNT, 15);
     }
 
     #[test]
@@ -363,6 +379,23 @@ mod tests {
         };
 
         assert_eq!(client.resolve_path("/tmp/home"), "/tmp/home/.test/sessions");
+    }
+
+    #[test]
+    fn test_client_def_resolve_path_allows_empty_relative_path() {
+        let client = ClientDef {
+            id: "test",
+            root: PathRoot::EnvVar {
+                var: "TOKSCALE_TEST_PATH_ROOT",
+                fallback_relative: ".fallback",
+            },
+            relative_path: "",
+            pattern: "*.jsonl",
+            headless: false,
+            parse_local: true,
+        };
+
+        assert_eq!(client.resolve_path("/tmp/home"), "/tmp/home/.fallback");
     }
 
     #[test]
