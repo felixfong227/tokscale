@@ -7,6 +7,8 @@ use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
 
+const COPILOT_EXPORT_TEST_WRITE_DELAY: Duration = Duration::from_millis(600);
+
 // ── Fixture helpers ────────────────────────────────────────────────────────
 
 /// Create a temporary directory with minimal OpenCode fixture data.
@@ -478,7 +480,7 @@ fn test_copilot_export_waits_for_file() {
 
     let output_path_for_writer = output_path.clone();
     thread::spawn(move || {
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(COPILOT_EXPORT_TEST_WRITE_DELAY);
         fs::write(output_path_for_writer, fixture).unwrap();
     });
 

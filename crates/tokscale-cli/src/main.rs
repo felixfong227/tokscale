@@ -14,6 +14,15 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tui::Tab;
 
+const COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND: &str = "github.copilot.debug.showChatLogView";
+const COPILOT_EXPORT_ALL_PROMPTS_COMMAND: &str =
+    "github.copilot.chat.debug.exportAllPromptLogsAsJson";
+const COPILOT_EXPORT_COMMAND_IDS: [&str; 2] = [
+    COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND,
+    COPILOT_EXPORT_ALL_PROMPTS_COMMAND,
+];
+const COPILOT_EXPORT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 #[derive(Parser)]
 #[command(name = "tokscale")]
 #[command(author, version, about = "AI token usage analytics")]
@@ -1223,7 +1232,10 @@ fn print_copilot_export_instructions(output_path: &Path) {
     );
     println!(
         "  {}",
-        "command ids: github.copilot.debug.showChatLogView, github.copilot.chat.debug.exportAllPromptLogsAsJson"
+        format!(
+            "command ids: {}, {}",
+            COPILOT_SHOW_CHAT_DEBUG_VIEW_COMMAND, COPILOT_EXPORT_ALL_PROMPTS_COMMAND
+        )
             .bright_black()
     );
     println!();
@@ -3290,10 +3302,7 @@ fn run_copilot_export_command(
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
-    let command_ids = vec![
-        "github.copilot.debug.showChatLogView",
-        "github.copilot.chat.debug.exportAllPromptLogsAsJson",
-    ];
+    let command_ids = COPILOT_EXPORT_COMMAND_IDS.to_vec();
 
     if let Ok(summary) = inspect_copilot_export(&output_path) {
         if json {
@@ -3362,10 +3371,7 @@ fn run_copilot_export_command(
                         prompts: Some(summary.prompts),
                         log_entries: Some(summary.log_entries),
                         usage_entries: Some(summary.usage_entries),
-                        command_ids: vec![
-                            "github.copilot.debug.showChatLogView",
-                            "github.copilot.chat.debug.exportAllPromptLogsAsJson",
-                        ],
+                        command_ids: COPILOT_EXPORT_COMMAND_IDS.to_vec(),
                     })?
                 );
             } else {
@@ -3395,7 +3401,7 @@ fn run_copilot_export_command(
             }
         }
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(COPILOT_EXPORT_POLL_INTERVAL);
     }
 }
 
