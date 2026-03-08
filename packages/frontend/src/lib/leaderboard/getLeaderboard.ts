@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { db, users, submissions } from "@/lib/db";
+import { db, users, submissions, dailyBreakdown } from "@/lib/db";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
 export type Period = "all" | "month" | "week";
@@ -37,28 +37,231 @@ export interface LeaderboardData {
   sortBy: SortBy;
 }
 
-function getDateFilter(period: Period) {
-  const now = new Date();
+interface LeaderboardPeriodRow {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  tokens: number;
+  cost: number;
+  submissionCount: number;
+  updatedAt: string;
+}
+
+interface PeriodDateRange {
+  start: string;
+  end: string;
+}
+
+interface PeriodLeaderboardDbRow {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  tokens: number | string | null;
+  cost: number | string | null;
+  submissionCount: number | string | null;
+  updatedAt: Date | string;
+}
+
+interface AllTimeLeaderboardDbRow {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  totalTokens: number | string | null;
+  totalCost: number | string | null;
+  submissionCount: number | string | null;
+  lastSubmission: string;
+}
+
+function toUtcDateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getPeriodDateRange(
+  period: Period,
+  now: Date = new Date()
+): PeriodDateRange | null {
+  if (period === "all") {
+    return null;
+  }
+
+  const end = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
 
   if (period === "week") {
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return and(
-      gte(submissions.createdAt, weekAgo),
-      lte(submissions.createdAt, now)
-    );
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - 6);
+    return {
+      start: toUtcDateString(start),
+      end: toUtcDateString(end),
+    };
   }
-  
-  if (period === "month") {
-    const monthAgo = new Date(now);
-    monthAgo.setMonth(monthAgo.getMonth() - 1);
-    return and(
-      gte(submissions.createdAt, monthAgo),
-      lte(submissions.createdAt, now)
-    );
+
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return {
+    start: toUtcDateString(start),
+    end: toUtcDateString(end),
+  };
+}
+
+function compareLeaderboardUsers(
+  left: Omit<LeaderboardUser, "rank">,
+  right: Omit<LeaderboardUser, "rank">,
+  sortBy: SortBy
+): number {
+  const primary = sortBy === "cost"
+    ? right.totalCost - left.totalCost
+    : right.totalTokens - left.totalTokens;
+
+  if (primary !== 0) {
+    return primary;
   }
-  
-  return undefined;
+
+  const secondary = sortBy === "cost"
+    ? right.totalTokens - left.totalTokens
+    : right.totalCost - left.totalCost;
+
+  if (secondary !== 0) {
+    return secondary;
+  }
+
+  return left.username.localeCompare(right.username);
+}
+
+function aggregatePeriodRows(
+  rows: LeaderboardPeriodRow[],
+  sortBy: SortBy
+): Array<Omit<LeaderboardUser, "rank">> {
+  const usersById = new Map<string, Omit<LeaderboardUser, "rank">>();
+
+  for (const row of rows) {
+    const existing = usersById.get(row.userId);
+
+    if (existing) {
+      existing.totalTokens += row.tokens;
+      existing.totalCost += row.cost;
+      existing.submissionCount = Math.max(existing.submissionCount, row.submissionCount);
+      if (row.updatedAt > existing.lastSubmission) {
+        existing.lastSubmission = row.updatedAt;
+      }
+      continue;
+    }
+
+    usersById.set(row.userId, {
+      userId: row.userId,
+      username: row.username,
+      displayName: row.displayName,
+      avatarUrl: row.avatarUrl,
+      totalTokens: row.tokens,
+      totalCost: row.cost,
+      submissionCount: row.submissionCount,
+      lastSubmission: row.updatedAt,
+    });
+  }
+
+  return Array.from(usersById.values()).sort((left, right) =>
+    compareLeaderboardUsers(left, right, sortBy)
+  );
+}
+
+function buildPeriodLeaderboardData(
+  rows: LeaderboardPeriodRow[],
+  page: number,
+  limit: number,
+  period: Period,
+  sortBy: SortBy = "tokens"
+): LeaderboardData {
+  const offset = (page - 1) * limit;
+  const aggregatedUsers = aggregatePeriodRows(rows, sortBy);
+  const pagedUsers = aggregatedUsers.slice(offset, offset + limit);
+
+  return {
+    users: pagedUsers.map((user, index) => ({
+      ...user,
+      rank: offset + index + 1,
+    })),
+    pagination: {
+      page,
+      limit,
+      totalUsers: aggregatedUsers.length,
+      totalPages: Math.ceil(aggregatedUsers.length / limit),
+      hasNext: offset + limit < aggregatedUsers.length,
+      hasPrev: page > 1,
+    },
+    stats: {
+      totalTokens: aggregatedUsers.reduce((sum, user) => sum + user.totalTokens, 0),
+      totalCost: aggregatedUsers.reduce((sum, user) => sum + user.totalCost, 0),
+      totalSubmissions: aggregatedUsers.length,
+      uniqueUsers: aggregatedUsers.length,
+    },
+    period,
+    sortBy,
+  };
+}
+
+function buildPeriodUserRank(
+  rows: LeaderboardPeriodRow[],
+  username: string,
+  sortBy: SortBy = "tokens"
+): LeaderboardUser | null {
+  const aggregatedUsers = aggregatePeriodRows(rows, sortBy);
+  const userIndex = aggregatedUsers.findIndex((user) => user.username === username);
+
+  if (userIndex === -1) {
+    return null;
+  }
+
+  return {
+    ...aggregatedUsers[userIndex],
+    rank: userIndex + 1,
+  };
+}
+
+async function fetchPeriodLeaderboardRows(
+  period: Exclude<Period, "all">
+): Promise<LeaderboardPeriodRow[]> {
+  const dateRange = getPeriodDateRange(period);
+
+  if (!dateRange) {
+    return [];
+  }
+
+  const rows: PeriodLeaderboardDbRow[] = await db
+    .select({
+      userId: users.id,
+      username: users.username,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      tokens: dailyBreakdown.tokens,
+      cost: dailyBreakdown.cost,
+      submissionCount: submissions.submitCount,
+      updatedAt: submissions.updatedAt,
+    })
+    .from(dailyBreakdown)
+    .innerJoin(submissions, eq(dailyBreakdown.submissionId, submissions.id))
+    .innerJoin(users, eq(submissions.userId, users.id))
+    .where(
+      and(
+        gte(dailyBreakdown.date, dateRange.start),
+        lte(dailyBreakdown.date, dateRange.end)
+      )
+    );
+
+  return rows.map((row: PeriodLeaderboardDbRow) => ({
+    userId: row.userId,
+    username: row.username,
+    displayName: row.displayName,
+    avatarUrl: row.avatarUrl,
+    tokens: Number(row.tokens) || 0,
+    cost: Number(row.cost) || 0,
+    submissionCount: Number(row.submissionCount) || 0,
+    updatedAt: row.updatedAt instanceof Date
+      ? row.updatedAt.toISOString()
+      : new Date(row.updatedAt).toISOString(),
+  }));
 }
 
 async function fetchLeaderboardData(
@@ -67,8 +270,12 @@ async function fetchLeaderboardData(
   limit: number,
   sortBy: SortBy = "tokens"
 ): Promise<LeaderboardData> {
+  if (period !== "all") {
+    const rows = await fetchPeriodLeaderboardRows(period);
+    return buildPeriodLeaderboardData(rows, page, limit, period, sortBy);
+  }
+
   const offset = (page - 1) * limit;
-  const dateFilter = getDateFilter(period);
 
   const orderByColumn = sortBy === "cost"
     ? sql`SUM(CAST(${submissions.totalCost} AS DECIMAL(12,4)))`
@@ -84,11 +291,10 @@ async function fetchLeaderboardData(
       totalTokens: sql<number>`SUM(${submissions.totalTokens})`.as("total_tokens"),
       totalCost: sql<number>`SUM(CAST(${submissions.totalCost} AS DECIMAL(12,4)))`.as("total_cost"),
       submissionCount: sql<number>`COALESCE(SUM(${submissions.submitCount}), 0)`.as("submission_count"),
-      lastSubmission: sql<string>`MAX(${submissions.createdAt})`.as("last_submission"),
+      lastSubmission: sql<string>`MAX(${submissions.updatedAt})`.as("last_submission"),
     })
     .from(submissions)
     .innerJoin(users, eq(submissions.userId, users.id))
-    .where(dateFilter)
     .groupBy(users.id, users.username, users.displayName, users.avatarUrl)
     .orderBy(desc(orderByColumn))
     .limit(limit)
@@ -103,15 +309,14 @@ async function fetchLeaderboardData(
         totalSubmissions: sql<number>`COUNT(${submissions.id})`,
         uniqueUsers: sql<number>`COUNT(DISTINCT ${submissions.userId})`,
       })
-      .from(submissions)
-      .where(dateFilter),
+      .from(submissions),
   ]);
 
   const totalUsers = Number(globalStats[0]?.uniqueUsers) || 0;
   const totalPages = Math.ceil(totalUsers / limit);
 
   return {
-    users: results.map((row, index) => ({
+    users: (results as AllTimeLeaderboardDbRow[]).map((row, index) => ({
       rank: offset + index + 1,
       userId: row.userId,
       username: row.username,
@@ -166,7 +371,10 @@ async function fetchUserRank(
   period: Period,
   sortBy: SortBy
 ): Promise<LeaderboardUser | null> {
-  const dateFilter = getDateFilter(period);
+  if (period !== "all") {
+    const rows = await fetchPeriodLeaderboardRows(period);
+    return buildPeriodUserRank(rows, username, sortBy);
+  }
 
   const userResult = await db
     .select({ id: users.id, username: users.username, displayName: users.displayName, avatarUrl: users.avatarUrl })
@@ -185,10 +393,10 @@ async function fetchUserRank(
       totalTokens: sql<number>`SUM(${submissions.totalTokens})`.as("total_tokens"),
       totalCost: sql<number>`SUM(CAST(${submissions.totalCost} AS DECIMAL(12,4)))`.as("total_cost"),
       submissionCount: sql<number>`COALESCE(SUM(${submissions.submitCount}), 0)`.as("submission_count"),
-      lastSubmission: sql<string>`MAX(${submissions.createdAt})`.as("last_submission"),
+      lastSubmission: sql<string>`MAX(${submissions.updatedAt})`.as("last_submission"),
     })
     .from(submissions)
-    .where(and(eq(submissions.userId, user.id), dateFilter));
+    .where(eq(submissions.userId, user.id));
 
   if (!userStatsResult[0] || userStatsResult[0].totalTokens == null) {
     return null;
@@ -214,7 +422,6 @@ async function fetchUserRank(
           total: compareColumn.as("total"),
         })
         .from(submissions)
-        .where(dateFilter)
         .groupBy(submissions.userId)
         .having(sql`${compareColumn} > ${userCompareValue}`)
         .as("higher_ranked")
