@@ -732,7 +732,7 @@ export interface LeaderboardUser {
   avatarUrl: string | null;
   totalTokens: number;
   totalCost: number;
-  submissionCount: number;
+  submissionCount: number | null;
   lastSubmission: string;
 }
 
@@ -749,7 +749,7 @@ export interface LeaderboardData {
   stats: {
     totalTokens: number;
     totalCost: number;
-    totalSubmissions: number;
+    totalSubmissions: number | null;
     uniqueUsers: number;
   };
   period: Period;
@@ -778,6 +778,7 @@ interface LeaderboardRowProps {
   user: LeaderboardUser;
   isCurrentUser: boolean;
   isLastRow: boolean;
+  showSubmissionCount: boolean;
   onRowClick: (username: string) => void;
 }
 
@@ -785,6 +786,7 @@ const LeaderboardRow = memo(function LeaderboardRow({
   user,
   isCurrentUser,
   isLastRow,
+  showSubmissionCount,
   onRowClick,
 }: LeaderboardRowProps) {
   const formattedTokens = useMemo(() => user.totalTokens.toLocaleString('en-US'), [user.totalTokens]);
@@ -836,9 +838,11 @@ const LeaderboardRow = memo(function LeaderboardRow({
           </CostValue>
         </CombinedValueContainer>
       </TableCell>
-      <TableCell className="text-right hidden-mobile w-24">
-        <SubmitCount>{user.submissionCount}</SubmitCount>
-      </TableCell>
+      {showSubmissionCount && (
+        <TableCell className="text-right hidden-mobile w-24">
+          <SubmitCount>{user.submissionCount ?? "—"}</SubmitCount>
+        </TableCell>
+      )}
     </TableRow>
   );
 });
@@ -955,6 +959,7 @@ export default function LeaderboardClient({ initialData, currentUser, initialSor
   }, [data.pagination.totalPages, page]);
 
   const sortedUsers = data.users || [];
+  const showSubmissionCount = period === "all";
 
   const handleCopyCommand = (command: string) => {
     navigator.clipboard.writeText(command);
@@ -1103,7 +1108,9 @@ export default function LeaderboardClient({ initialData, currentUser, initialSor
                       <TableHeaderCell>User</TableHeaderCell>
                       <TableHeaderCell className="text-right hidden-cost-mobile">Cost</TableHeaderCell>
                       <TableHeaderCell className="text-right">Tokens</TableHeaderCell>
-                      <TableHeaderCell className="text-right hidden-mobile w-24">Submits</TableHeaderCell>
+                      {showSubmissionCount && (
+                        <TableHeaderCell className="text-right hidden-mobile w-24">Submits</TableHeaderCell>
+                      )}
                     </tr>
                   </TableHead>
                   <TableBody>
@@ -1113,6 +1120,7 @@ export default function LeaderboardClient({ initialData, currentUser, initialSor
                         user={user}
                         isCurrentUser={!!(currentUser && user.username === currentUser.username)}
                         isLastRow={index === sortedUsers.length - 1}
+                        showSubmissionCount={showSubmissionCount}
                         onRowClick={handleRowClick}
                       />
                     ))}

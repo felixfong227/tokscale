@@ -13,7 +13,7 @@ export interface LeaderboardUser {
   avatarUrl: string | null;
   totalTokens: number;
   totalCost: number;
-  submissionCount: number;
+  submissionCount: number | null;
   lastSubmission: string;
 }
 
@@ -30,7 +30,7 @@ export interface LeaderboardData {
   stats: {
     totalTokens: number;
     totalCost: number;
-    totalSubmissions: number;
+    totalSubmissions: number | null;
     uniqueUsers: number;
   };
   period: Period;
@@ -44,7 +44,6 @@ interface LeaderboardPeriodRow {
   avatarUrl: string | null;
   tokens: number;
   cost: number;
-  submissionCount: number;
   updatedAt: string;
 }
 
@@ -60,7 +59,6 @@ interface PeriodLeaderboardDbRow {
   avatarUrl: string | null;
   tokens: number | string | null;
   cost: number | string | null;
-  submissionCount: number | string | null;
   updatedAt: Date | string;
 }
 
@@ -143,7 +141,6 @@ function aggregatePeriodRows(
     if (existing) {
       existing.totalTokens += row.tokens;
       existing.totalCost += row.cost;
-      existing.submissionCount = Math.max(existing.submissionCount, row.submissionCount);
       if (row.updatedAt > existing.lastSubmission) {
         existing.lastSubmission = row.updatedAt;
       }
@@ -157,7 +154,7 @@ function aggregatePeriodRows(
       avatarUrl: row.avatarUrl,
       totalTokens: row.tokens,
       totalCost: row.cost,
-      submissionCount: row.submissionCount,
+      submissionCount: null,
       lastSubmission: row.updatedAt,
     });
   }
@@ -194,7 +191,8 @@ function buildPeriodLeaderboardData(
     stats: {
       totalTokens: aggregatedUsers.reduce((sum, user) => sum + user.totalTokens, 0),
       totalCost: aggregatedUsers.reduce((sum, user) => sum + user.totalCost, 0),
-      totalSubmissions: aggregatedUsers.length,
+      // submitCount lives on the all-time submission row, so period-scoped submit totals are unavailable here.
+      totalSubmissions: null,
       uniqueUsers: aggregatedUsers.length,
     },
     period,
@@ -237,7 +235,6 @@ async function fetchPeriodLeaderboardRows(
       avatarUrl: users.avatarUrl,
       tokens: dailyBreakdown.tokens,
       cost: dailyBreakdown.cost,
-      submissionCount: submissions.submitCount,
       updatedAt: submissions.updatedAt,
     })
     .from(dailyBreakdown)
@@ -257,7 +254,6 @@ async function fetchPeriodLeaderboardRows(
     avatarUrl: row.avatarUrl,
     tokens: Number(row.tokens) || 0,
     cost: Number(row.cost) || 0,
-    submissionCount: Number(row.submissionCount) || 0,
     updatedAt: row.updatedAt instanceof Date
       ? row.updatedAt.toISOString()
       : new Date(row.updatedAt).toISOString(),

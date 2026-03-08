@@ -114,9 +114,9 @@ let getLeaderboardData: ModuleExports["getLeaderboardData"];
 let getUserRank: ModuleExports["getUserRank"];
 
 beforeAll(async () => {
-  const module = await import("../../src/lib/leaderboard/getLeaderboard");
-  getLeaderboardData = module.getLeaderboardData;
-  getUserRank = module.getUserRank;
+  const leaderboardModule = await import("../../src/lib/leaderboard/getLeaderboard");
+  getLeaderboardData = leaderboardModule.getLeaderboardData;
+  getUserRank = leaderboardModule.getUserRank;
 });
 
 beforeEach(() => {
@@ -136,7 +136,6 @@ describe("period leaderboard data", () => {
       avatarUrl: null,
       tokens: 100,
       cost: 1.25,
-      submissionCount: 8,
       updatedAt: "2026-03-07T11:00:00.000Z",
     },
     {
@@ -146,7 +145,6 @@ describe("period leaderboard data", () => {
       avatarUrl: null,
       tokens: 150,
       cost: 1.75,
-      submissionCount: 8,
       updatedAt: "2026-03-07T11:00:00.000Z",
     },
     {
@@ -156,7 +154,6 @@ describe("period leaderboard data", () => {
       avatarUrl: null,
       tokens: 1000,
       cost: 9.5,
-      submissionCount: 2,
       updatedAt: "2026-03-07T09:00:00.000Z",
     },
   ];
@@ -189,12 +186,12 @@ describe("period leaderboard data", () => {
       username: "alice",
       totalTokens: 250,
       totalCost: 3,
-      submissionCount: 8,
+      submissionCount: null,
     });
     expect(leaderboard.stats).toMatchObject({
       totalTokens: 1250,
       totalCost: 12.5,
-      totalSubmissions: 2,
+      totalSubmissions: null,
       uniqueUsers: 2,
     });
   });
@@ -229,12 +226,13 @@ describe("period leaderboard data", () => {
 
     const rank = await getUserRank("alice", "week", "tokens");
 
+    expect(mockState.fromCalls[0]).toBe(mockState.tables.dailyBreakdown);
     expect(rank).toMatchObject({
       rank: 2,
       username: "alice",
       totalTokens: 250,
       totalCost: 3,
-      submissionCount: 8,
+      submissionCount: null,
       lastSubmission: "2026-03-07T11:00:00.000Z",
     });
   });
