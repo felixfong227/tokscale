@@ -1,7 +1,7 @@
 use crate::{auth, cursor};
 use ab_glyph::{point, Font, FontArc, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result};
-use chrono::{Datelike, Duration, Local, NaiveDate, Utc};
+use chrono::{Datelike, Duration, Local, NaiveDate};
 use colored::Colorize;
 use image::{imageops::FilterType, Rgba, RgbaImage};
 use imageproc::drawing::draw_filled_circle_mut;
@@ -1254,18 +1254,22 @@ fn calculate_intensity(cost: f64, max_cost: f64) -> u8 {
 }
 
 fn calculate_streaks(sorted_dates: &[String]) -> (i32, i32) {
+    let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+    calculate_streaks_with_today(sorted_dates, &today)
+}
+
+fn calculate_streaks_with_today(sorted_dates: &[String], today: &str) -> (i32, i32) {
     if sorted_dates.is_empty() {
         return (0, 0);
     }
 
-    let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
     let mut current_streak = 0;
     let mut longest_streak = 0;
     let mut streak = 1;
 
     for index in (0..sorted_dates.len()).rev() {
         if index == sorted_dates.len() - 1 {
-            let days_diff = date_diff_days(&sorted_dates[index], &today);
+            let days_diff = date_diff_days(&sorted_dates[index], today);
             if days_diff <= 1 {
                 current_streak = 1;
             } else {
@@ -2086,6 +2090,18 @@ mod tests {
         let dates = vec!["2024-01-01".to_string()];
         let (_current, longest) = calculate_streaks(&dates);
         assert_eq!(longest, 1);
+    }
+
+    #[test]
+    fn test_calculate_streaks_current_uses_provided_today() {
+        let dates = vec![
+            "2026-03-01".to_string(),
+            "2026-03-02".to_string(),
+            "2026-03-03".to_string(),
+        ];
+        let (current, longest) = calculate_streaks_with_today(&dates, "2026-03-03");
+        assert_eq!(current, 3);
+        assert_eq!(longest, 3);
     }
 
     // ========== date_diff_days tests ==========

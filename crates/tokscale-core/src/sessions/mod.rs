@@ -151,12 +151,17 @@ impl UnifiedMessage {
     }
 }
 
-/// Convert Unix milliseconds timestamp to YYYY-MM-DD date string in UTC
+/// Convert Unix milliseconds to a local YYYY-MM-DD date string.
 fn timestamp_to_date(timestamp_ms: i64) -> String {
-    use chrono::{TimeZone, Utc};
+    timestamp_to_date_with_timezone(timestamp_ms, &chrono::Local)
+}
 
-    let datetime = Utc.timestamp_millis_opt(timestamp_ms);
-    match datetime {
+fn timestamp_to_date_with_timezone<Tz>(timestamp_ms: i64, timezone: &Tz) -> String
+where
+    Tz: chrono::TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    match timezone.timestamp_millis_opt(timestamp_ms) {
         chrono::LocalResult::Single(dt) => dt.format("%Y-%m-%d").to_string(),
         _ => String::new(),
     }
@@ -165,29 +170,29 @@ fn timestamp_to_date(timestamp_ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::FixedOffset;
 
     #[test]
-    fn test_timestamp_to_date() {
-        // 2025-06-16 12:00:00 UTC (1750075200 seconds since epoch)
-        let ts = 1750075200000_i64;
-        let date = timestamp_to_date(ts);
-        assert_eq!(date, "2025-06-16");
+    fn test_timestamp_to_date_with_positive_offset() {
+        let kst = FixedOffset::east_opt(9 * 60 * 60).unwrap();
+        let ts = 1772512200000_i64; // 2026-03-03T04:30:00Z
+        let date = timestamp_to_date_with_timezone(ts, &kst);
+        assert_eq!(date, "2026-03-03");
     }
 
     #[test]
-    fn test_timestamp_to_date_epoch() {
-        // Unix epoch: 1970-01-01
-        let ts = 0_i64;
-        let date = timestamp_to_date(ts);
-        assert_eq!(date, "1970-01-01");
+    fn test_timestamp_to_date_with_negative_offset() {
+        let pst = FixedOffset::west_opt(8 * 60 * 60).unwrap();
+        let ts = 1772512200000_i64; // 2026-03-03T04:30:00Z
+        let date = timestamp_to_date_with_timezone(ts, &pst);
+        assert_eq!(date, "2026-03-02");
     }
 
     #[test]
-    fn test_timestamp_to_date_recent() {
-        // 2024-12-01 00:00:00 UTC
-        let ts = 1733011200000_i64;
-        let date = timestamp_to_date(ts);
-        assert_eq!(date, "2024-12-01");
+    fn test_timestamp_to_date_invalid_timestamp() {
+        let utc = FixedOffset::east_opt(0).unwrap();
+        let date = timestamp_to_date_with_timezone(i64::MAX, &utc);
+        assert_eq!(date, "");
     }
 
     #[test]
@@ -213,7 +218,7 @@ mod tests {
         assert_eq!(msg.client, "opencode");
         assert_eq!(msg.model_id, "claude-3-5-sonnet");
         assert_eq!(msg.session_id, "test-session-id");
-        assert_eq!(msg.date, "2024-12-01");
+        assert_eq!(msg.date, timestamp_to_date(1733011200000));
         assert_eq!(msg.cost, 0.05);
         assert_eq!(msg.agent, None);
     }

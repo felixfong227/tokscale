@@ -3,9 +3,27 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 // ── Fixture helpers ────────────────────────────────────────────────────────
+
+fn prime_pricing_cache(base: &Path) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_secs();
+    let payload = format!(r#"{{"timestamp":{},"data":{{}}}}"#, now);
+
+    for dir in [
+        base.join("Library/Caches/tokscale"),
+        base.join(".cache/tokscale"),
+    ] {
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("pricing-litellm.json"), &payload).unwrap();
+        fs::write(dir.join("pricing-openrouter.json"), &payload).unwrap();
+    }
+}
 
 /// Create a temporary directory with minimal OpenCode fixture data.
 ///
@@ -16,6 +34,7 @@ use tempfile::TempDir;
 fn create_temp_fixture_dir() -> TempDir {
     let tmp = TempDir::new().expect("failed to create temp dir");
     let base = tmp.path();
+    prime_pricing_cache(base);
 
     // Session 1: two messages on 2024-06-15 using claude-sonnet-4
     let session1 = base.join(".local/share/opencode/storage/message/session1");
@@ -86,8 +105,56 @@ fn create_temp_fixture_dir() -> TempDir {
 fn create_empty_fixture_dir() -> TempDir {
     let tmp = TempDir::new().expect("failed to create temp dir");
     let base = tmp.path();
+    prime_pricing_cache(base);
     let opencode_dir = base.join(".local/share/opencode/storage/message");
     fs::create_dir_all(opencode_dir).unwrap();
+    tmp
+}
+
+fn create_timezone_boundary_fixture_dir() -> TempDir {
+    let tmp = TempDir::new().expect("failed to create temp dir");
+    let base = tmp.path();
+    prime_pricing_cache(base);
+
+    let session = base.join(".local/share/opencode/storage/message/session1");
+    fs::create_dir_all(&session).unwrap();
+
+    // 2026-03-02 18:00:00 UTC = 2026-03-02 10:00:00 in America/Los_Angeles
+    let msg_a = r#"{
+        "id": "msg_a",
+        "sessionID": "session1",
+        "role": "assistant",
+        "modelID": "claude-sonnet-4-20250514",
+        "providerID": "anthropic",
+        "cost": 0.05,
+        "tokens": {
+            "input": 1000,
+            "output": 500,
+            "reasoning": 0,
+            "cache": { "read": 200, "write": 50 }
+        },
+        "time": { "created": 1772474400000.0 }
+    }"#;
+    fs::write(session.join("msg_a.json"), msg_a).unwrap();
+
+    // 2026-03-03 04:30:00 UTC = 2026-03-02 20:30:00 in America/Los_Angeles
+    let msg_b = r#"{
+        "id": "msg_b",
+        "sessionID": "session1",
+        "role": "assistant",
+        "modelID": "claude-sonnet-4-20250514",
+        "providerID": "anthropic",
+        "cost": 0.03,
+        "tokens": {
+            "input": 800,
+            "output": 300,
+            "reasoning": 0,
+            "cache": { "read": 150, "write": 30 }
+        },
+        "time": { "created": 1772512200000.0 }
+    }"#;
+    fs::write(session.join("msg_b.json"), msg_b).unwrap();
+
     tmp
 }
 
@@ -95,7 +162,8 @@ fn create_empty_fixture_dir() -> TempDir {
 fn cmd_with_home(tmp: &Path) -> Command {
     let mut cmd = cargo_bin_cmd!("tokscale");
     cmd.env("HOME", tmp)
-        .env("XDG_DATA_HOME", tmp.join(".local/share"));
+        .env("XDG_DATA_HOME", tmp.join(".local/share"))
+        .env("XDG_CACHE_HOME", tmp.join(".cache"));
     cmd
 }
 
@@ -376,6 +444,33 @@ fn test_models_with_no_matching_date() {
         entries.is_empty(),
         "No entries expected for future date range"
     );
+}
+
+#[test]
+fn test_graph_single_day_filter_uses_local_timezone_boundaries() {
+    let tmp = create_timezone_boundary_fixture_dir();
+    let output = cmd_with_home(tmp.path())
+        .env("TZ", "America/Los_Angeles")
+        .args(["graph", "--opencode", "--no-spinner"])
+        .args(["--since", "2026-03-02", "--until", "2026-03-02"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let contributions = json["contributions"].as_array().unwrap();
+    assert_eq!(
+        contributions.len(),
+        1,
+        "expected a single local-day bucket, got {:?}",
+        contributions
+    );
+    assert_eq!(contributions[0]["date"].as_str().unwrap(), "2026-03-02");
+    assert_eq!(contributions[0]["totals"]["messages"].as_i64().unwrap(), 2);
 }
 
 #[test]

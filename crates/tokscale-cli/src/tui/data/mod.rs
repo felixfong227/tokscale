@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use anyhow::Result;
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, Local, NaiveDate};
 use rayon::prelude::*;
 use tokio::runtime::Runtime;
 
@@ -587,11 +587,14 @@ fn parse_date(date_str: &str) -> Option<NaiveDate> {
 }
 
 fn build_contribution_graph(daily: &[DailyUsage]) -> GraphData {
+    build_contribution_graph_for_today(daily, Local::now().date_naive())
+}
+
+fn build_contribution_graph_for_today(daily: &[DailyUsage], today: NaiveDate) -> GraphData {
     if daily.is_empty() {
         return GraphData { weeks: vec![] };
     }
 
-    let today = Utc::now().date_naive();
     let days_to_sunday = today.weekday().num_days_from_sunday();
     let end_date = today;
     let start_date = end_date - chrono::Duration::days(364 + days_to_sunday as i64);
@@ -645,11 +648,14 @@ fn build_contribution_graph(daily: &[DailyUsage]) -> GraphData {
 }
 
 fn calculate_streaks(daily: &[DailyUsage]) -> (u32, u32) {
+    calculate_streaks_for_today(daily, Local::now().date_naive())
+}
+
+fn calculate_streaks_for_today(daily: &[DailyUsage], today: NaiveDate) -> (u32, u32) {
     if daily.is_empty() {
         return (0, 0);
     }
 
-    let today = Utc::now().date_naive();
     let dates: HashSet<NaiveDate> = daily.iter().map(|d| d.date).collect();
 
     let mut current_streak = 0u32;
@@ -906,5 +912,49 @@ mod tests {
         assert_eq!(parse_date("invalid"), None);
         assert_eq!(parse_date("2024-13-01"), None);
         assert_eq!(parse_date(""), None);
+    }
+
+    #[test]
+    fn test_build_contribution_graph_uses_provided_today() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        let graph = build_contribution_graph_for_today(&[], today);
+        assert!(graph.weeks.is_empty());
+
+        let daily = vec![DailyUsage {
+            date: NaiveDate::from_ymd_opt(2026, 3, 2).unwrap(),
+            tokens: TokenBreakdown::default(),
+            cost: 0.0,
+            models: BTreeMap::new(),
+        }];
+        let graph = build_contribution_graph_for_today(&daily, today);
+        let last_day = graph
+            .weeks
+            .last()
+            .and_then(|week| week.last())
+            .and_then(|day| day.as_ref())
+            .map(|day| day.date);
+        assert_eq!(last_day, Some(today));
+    }
+
+    #[test]
+    fn test_calculate_streaks_uses_provided_today() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 3).unwrap();
+        let daily = vec![
+            DailyUsage {
+                date: NaiveDate::from_ymd_opt(2026, 3, 2).unwrap(),
+                tokens: TokenBreakdown::default(),
+                cost: 0.0,
+                models: BTreeMap::new(),
+            },
+            DailyUsage {
+                date: NaiveDate::from_ymd_opt(2026, 3, 3).unwrap(),
+                tokens: TokenBreakdown::default(),
+                cost: 0.0,
+                models: BTreeMap::new(),
+            },
+        ];
+        let (current, longest) = calculate_streaks_for_today(&daily, today);
+        assert_eq!(current, 2);
+        assert_eq!(longest, 2);
     }
 }

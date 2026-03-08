@@ -549,7 +549,7 @@ impl App {
             return;
         }
 
-        let today = chrono::Utc::now().date_naive();
+        let today = chrono::Local::now().date_naive();
         let (today_index, total_len) = {
             let sorted_daily = self.get_sorted_daily();
             (

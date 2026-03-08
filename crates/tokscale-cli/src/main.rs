@@ -1009,30 +1009,44 @@ fn build_date_filter(
     since: Option<String>,
     until: Option<String>,
 ) -> (Option<String>, Option<String>) {
-    use chrono::{Datelike, Duration, Utc};
+    build_date_filter_for_date(
+        today,
+        week,
+        month,
+        since,
+        until,
+        chrono::Local::now().date_naive(),
+    )
+}
 
-    // Use UTC for date shortcuts to match TypeScript behavior
-    // TS uses: new Date().toISOString().split("T")[0]
+fn build_date_filter_for_date(
+    today: bool,
+    week: bool,
+    month: bool,
+    since: Option<String>,
+    until: Option<String>,
+    current_date: chrono::NaiveDate,
+) -> (Option<String>, Option<String>) {
+    use chrono::{Datelike, Duration};
+
     if today {
-        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let date = current_date.format("%Y-%m-%d").to_string();
         return (Some(date.clone()), Some(date));
     }
 
     if week {
-        let end = Utc::now();
-        let start = end - Duration::days(6);
+        let start = current_date - Duration::days(6);
         return (
             Some(start.format("%Y-%m-%d").to_string()),
-            Some(end.format("%Y-%m-%d").to_string()),
+            Some(current_date.format("%Y-%m-%d").to_string()),
         );
     }
 
     if month {
-        let now = Utc::now();
-        let start = now.with_day(1).unwrap_or(now);
+        let start = current_date.with_day(1).unwrap_or(current_date);
         return (
             Some(start.format("%Y-%m-%d").to_string()),
-            Some(now.format("%Y-%m-%d").to_string()),
+            Some(current_date.format("%Y-%m-%d").to_string()),
         );
     }
 
@@ -1060,6 +1074,26 @@ fn get_date_range_label(
     until: &Option<String>,
     year: &Option<String>,
 ) -> Option<String> {
+    get_date_range_label_for_date(
+        today,
+        week,
+        month,
+        since,
+        until,
+        year,
+        chrono::Local::now().date_naive(),
+    )
+}
+
+fn get_date_range_label_for_date(
+    today: bool,
+    week: bool,
+    month: bool,
+    since: &Option<String>,
+    until: &Option<String>,
+    year: &Option<String>,
+    current_date: chrono::NaiveDate,
+) -> Option<String> {
     if today {
         return Some("Today".to_string());
     }
@@ -1067,8 +1101,7 @@ fn get_date_range_label(
         return Some("Last 7 days".to_string());
     }
     if month {
-        let now = chrono::Utc::now();
-        return Some(now.format("%B %Y").to_string());
+        return Some(current_date.format("%B %Y").to_string());
     }
     if let Some(y) = year {
         return Some(y.clone());
@@ -3470,6 +3503,30 @@ mod tests {
     }
 
     #[test]
+    fn test_build_date_filter_today_uses_provided_local_date() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        let (since, until) = build_date_filter_for_date(true, false, false, None, None, today);
+        assert_eq!(since, Some("2026-03-08".to_string()));
+        assert_eq!(until, Some("2026-03-08".to_string()));
+    }
+
+    #[test]
+    fn test_build_date_filter_week_uses_provided_local_date() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        let (since, until) = build_date_filter_for_date(false, true, false, None, None, today);
+        assert_eq!(since, Some("2026-03-02".to_string()));
+        assert_eq!(until, Some("2026-03-08".to_string()));
+    }
+
+    #[test]
+    fn test_build_date_filter_month_uses_provided_local_date() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        let (since, until) = build_date_filter_for_date(false, false, true, None, None, today);
+        assert_eq!(since, Some("2026-03-01".to_string()));
+        assert_eq!(until, Some("2026-03-08".to_string()));
+    }
+
+    #[test]
     fn test_normalize_year_filter_with_year() {
         let year = normalize_year_filter(false, false, false, Some("2024".to_string()));
         assert_eq!(year, Some("2024".to_string()));
@@ -3610,6 +3667,13 @@ mod tests {
     fn test_get_date_range_label_week() {
         let label = get_date_range_label(false, true, false, &None, &None, &None);
         assert_eq!(label, Some("Last 7 days".to_string()));
+    }
+
+    #[test]
+    fn test_get_date_range_label_month_uses_provided_local_date() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        let label = get_date_range_label_for_date(false, false, true, &None, &None, &None, today);
+        assert_eq!(label, Some("March 2026".to_string()));
     }
 
     #[test]
