@@ -965,9 +965,7 @@ mod tests {
             "unknown"
         ));
         assert!(!sessions::synthetic::matches_synthetic_filter(
-            "opencode",
-            "gpt-5.2",
-            "openai"
+            "opencode", "gpt-5.2", "openai"
         ));
     }
 }

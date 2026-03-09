@@ -1483,16 +1483,10 @@ mod tests {
     fn test_retain_for_requested_clients_keeps_original_client_matches() {
         let requested: HashSet<&str> = HashSet::from(["opencode"]);
         assert!(retain_for_requested_clients(
-            "opencode",
-            "gpt-5.2",
-            "openai",
-            &requested
+            "opencode", "gpt-5.2", "openai", &requested
         ));
         assert!(!retain_for_requested_clients(
-            "claude",
-            "gpt-5.2",
-            "openai",
-            &requested
+            "claude", "gpt-5.2", "openai", &requested
         ));
     }
 
@@ -1512,10 +1506,7 @@ mod tests {
             &requested
         ));
         assert!(!retain_for_requested_clients(
-            "opencode",
-            "gpt-5.2",
-            "openai",
-            &requested
+            "opencode", "gpt-5.2", "openai", &requested
         ));
     }
 }

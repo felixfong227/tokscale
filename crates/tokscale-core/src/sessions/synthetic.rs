@@ -357,11 +357,7 @@ mod tests {
             "claude-sonnet-4-5",
             "glhf"
         ));
-        assert!(!matches_synthetic_filter(
-            "opencode",
-            "gpt-5.2",
-            "openai"
-        ));
+        assert!(!matches_synthetic_filter("opencode", "gpt-5.2", "openai"));
     }
 
     #[test]
