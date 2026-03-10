@@ -302,8 +302,7 @@ impl DataLoader {
                 {
                     msg.client = "synthetic".to_string();
                     msg.model_id = sessions::synthetic::normalize_synthetic_model(&msg.model_id);
-                    if msg.provider_id.is_empty()
-                        || msg.provider_id.eq_ignore_ascii_case("unknown")
+                    if msg.provider_id.is_empty() || msg.provider_id.eq_ignore_ascii_case("unknown")
                     {
                         msg.provider_id = "synthetic".to_string();
                     }
