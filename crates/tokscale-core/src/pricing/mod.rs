@@ -64,6 +64,10 @@ impl PricingService {
             ("gpt-5.3", 0.00000175, 0.000014, Some(1.75e-7)),
             ("gpt-5.3-codex", 0.00000175, 0.000014, Some(1.75e-7)),
             ("gpt-5.3-codex-spark", 0.00000175, 0.000014, Some(1.75e-7)),
+            // Composer 1.5: $3.50/$17.50 per 1M tokens, $0.35 cache read
+            // Source: Cursor docs (cursor.com/docs/models#model-pricing), issue #276
+            ("composer 1.5", 0.0000035, 0.0000175, Some(3.5e-7)),
+            ("composer-1.5", 0.0000035, 0.0000175, Some(3.5e-7)),
         ];
 
         let mut overrides = HashMap::with_capacity(entries.len());
@@ -258,5 +262,32 @@ mod tests {
         let cost = service.calculate_cost("gpt-5.3-codex", 1_000_000, 100_000, 0, 0, 0);
         let expected = 1_000_000.0 * 0.00000175 + 100_000.0 * 0.000014;
         assert!((cost - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_cursor_returns_pricing_for_composer_1_5() {
+        let service = PricingService::new(HashMap::new(), HashMap::new());
+        let result = service.lookup_with_source("Composer 1.5", None).unwrap();
+        assert_eq!(result.source, "Cursor");
+        assert_eq!(result.matched_key, "composer 1.5");
+        assert_eq!(result.pricing.input_cost_per_token, Some(0.0000035));
+        assert_eq!(result.pricing.output_cost_per_token, Some(0.0000175));
+        assert_eq!(result.pricing.cache_read_input_token_cost, Some(3.5e-7));
+    }
+
+    #[test]
+    fn test_cursor_calculate_cost_for_composer_1_5() {
+        let service = PricingService::new(HashMap::new(), HashMap::new());
+        let cost = service.calculate_cost("Composer 1.5", 1_000_000, 100_000, 50_000, 0, 0);
+        let expected = 1_000_000.0 * 0.0000035 + 100_000.0 * 0.0000175 + 50_000.0 * 3.5e-7;
+        assert!((cost - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_cursor_returns_pricing_for_hyphenated_composer_1_5() {
+        let service = PricingService::new(HashMap::new(), HashMap::new());
+        let result = service.lookup_with_source("composer-1.5", None).unwrap();
+        assert_eq!(result.source, "Cursor");
+        assert_eq!(result.matched_key, "composer-1.5");
     }
 }
