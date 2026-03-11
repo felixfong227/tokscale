@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { db, deviceCodes, apiTokens, users } from "@/lib/db";
+import { db, deviceCodes, users } from "@/lib/db";
 import { eq, and, gt } from "drizzle-orm";
-import { generateApiToken } from "@/lib/auth/utils";
+import { issuePersonalToken } from "@/lib/auth/personalTokens";
 
 export async function POST(request: Request) {
   try {
@@ -50,28 +50,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate API token
-    const token = generateApiToken();
-    const tokenName = record.deviceName || "CLI";
-
-    // Check if token with same name exists, append number if needed
-    const existingTokens = await db
-      .select()
-      .from(apiTokens)
-      .where(eq(apiTokens.userId, user.id));
-
-    let finalName = tokenName;
-    let counter = 1;
-    while (existingTokens.some((t) => t.name === finalName)) {
-      finalName = `${tokenName} (${counter})`;
-      counter++;
-    }
-
-    // Store API token
-    await db.insert(apiTokens).values({
+    const issuedToken = await issuePersonalToken({
       userId: user.id,
-      token,
-      name: finalName,
+      name: record.deviceName || "CLI",
+      ensureUniqueName: true,
     });
 
     // Delete the device code (one-time use)
@@ -79,7 +61,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       status: "complete",
-      token,
+      token: issuedToken.token,
       user: {
         username: user.username,
         avatarUrl: user.avatarUrl,

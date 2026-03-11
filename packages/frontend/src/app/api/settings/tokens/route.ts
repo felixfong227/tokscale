@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { db, apiTokens } from "@/lib/db";
-import { eq, desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
+import { listPersonalTokens } from "@/lib/auth/personalTokens";
 
 export async function GET() {
   try {
@@ -10,18 +9,16 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const tokens = await db
-      .select({
-        id: apiTokens.id,
-        name: apiTokens.name,
-        createdAt: apiTokens.createdAt,
-        lastUsedAt: apiTokens.lastUsedAt,
-      })
-      .from(apiTokens)
-      .where(eq(apiTokens.userId, session.id))
-      .orderBy(desc(apiTokens.createdAt));
+    const tokens = await listPersonalTokens(session.id);
 
-    return NextResponse.json({ tokens });
+    return NextResponse.json({
+      tokens: tokens.map((token) => ({
+        id: token.id,
+        name: token.name,
+        createdAt: token.createdAt,
+        lastUsedAt: token.lastUsedAt,
+      })),
+    });
   } catch (error) {
     console.error("Tokens list error:", error);
     return NextResponse.json(

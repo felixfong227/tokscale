@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
-import { db, sessions, users, apiTokens } from "@/lib/db";
-import { eq, and, gt, or, isNull } from "drizzle-orm";
+import { db, sessions, users } from "@/lib/db";
+import { eq, and, gt } from "drizzle-orm";
 import { generateRandomString } from "./utils";
+import { authenticatePersonalToken } from "./personalTokens";
 
 const SESSION_COOKIE_NAME = "tt_session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -108,43 +109,18 @@ export async function clearSession(): Promise<void> {
 export async function validateApiToken(
   token: string
 ): Promise<SessionUser | null> {
-  if (!token.startsWith("tt_")) {
+  const result = await authenticatePersonalToken(token);
+
+  if (result.status !== "valid") {
     return null;
   }
-
-  const result = await db
-    .select({
-      apiToken: apiTokens,
-      user: users,
-    })
-    .from(apiTokens)
-    .innerJoin(users, eq(apiTokens.userId, users.id))
-    .where(
-      and(
-        eq(apiTokens.token, token),
-        or(isNull(apiTokens.expiresAt), gt(apiTokens.expiresAt, new Date()))
-      )
-    )
-    .limit(1);
-
-  if (result.length === 0) {
-    return null;
-  }
-
-  // Update last_used_at
-  await db
-    .update(apiTokens)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(apiTokens.token, token));
-
-  const { user } = result[0];
 
   return {
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    avatarUrl: user.avatarUrl,
-    isAdmin: user.isAdmin,
+    id: result.userId,
+    username: result.username,
+    displayName: result.displayName,
+    avatarUrl: result.avatarUrl,
+    isAdmin: result.isAdmin,
   };
 }
 

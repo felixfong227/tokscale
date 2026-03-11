@@ -89,10 +89,13 @@ impl CodexTotals {
     }
 
     fn into_tokens(self) -> TokenBreakdown {
+        // Clamp cached to not exceed input to prevent inflated totals when
+        // malformed data reports more cached tokens than input tokens.
+        let clamped_cached = self.cached.min(self.input).max(0);
         TokenBreakdown {
-            input: (self.input - self.cached).max(0),
+            input: (self.input - clamped_cached).max(0),
             output: self.output.max(0),
-            cache_read: self.cached.max(0),
+            cache_read: clamped_cached,
             cache_write: 0,
             reasoning: self.reasoning.max(0),
         }
@@ -179,11 +182,17 @@ pub fn parse_codex_file(path: &Path) -> Vec<UnifiedMessage> {
 
                     let tokens = if let Some(total) = total_usage {
                         match previous_totals {
-                            Some(previous) => total
-                                .delta_from(previous)
-                                .or(last_usage)
-                                .unwrap_or(total)
-                                .into_tokens(),
+                            Some(previous) => {
+                                match total.delta_from(previous).or(last_usage) {
+                                    Some(delta) => delta.into_tokens(),
+                                    None => {
+                                        // Totals regressed with no last_usage fallback;
+                                        // reset baseline and skip to avoid double-counting.
+                                        previous_totals = Some(total);
+                                        continue;
+                                    }
+                                }
+                            }
                             None => total.into_tokens(),
                         }
                     } else if let Some(last) = last_usage {
@@ -498,6 +507,53 @@ mod tests {
         assert_eq!(messages[1].tokens.output, 3);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
+    }
+
+    #[test]
+    fn test_token_count_skips_regressed_totals_without_last_usage() {
+        // When totals regress and last_usage is absent, the row should be
+        // skipped entirely to avoid double-counting the full cumulative total.
+        let line1 = r#"{"timestamp":"2026-01-01T00:00:00Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#;
+        let line2 = r#"{"timestamp":"2026-01-01T00:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30,"reasoning_output_tokens":5}}}}"#;
+        // Totals regress (lower values) and no last_token_usage — should skip
+        let line3 = r#"{"timestamp":"2026-01-01T00:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":50,"cached_input_tokens":10,"output_tokens":15,"reasoning_output_tokens":2}}}}"#;
+        // Normal continuation after reset
+        let line4 = r#"{"timestamp":"2026-01-01T00:00:03Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":80,"cached_input_tokens":15,"output_tokens":25,"reasoning_output_tokens":4}}}}"#;
+        let content = format!("{}\n{}\n{}\n{}", line1, line2, line3, line4);
+        let file = create_test_file(&content);
+
+        let messages = parse_codex_file(file.path());
+
+        // Should produce 2 messages: first from line2 (full total),
+        // then delta from line4 relative to line3 (baseline reset).
+        assert_eq!(messages.len(), 2);
+        // First message: full total
+        assert_eq!(messages[0].tokens.input, 80);
+        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.cache_read, 20);
+        assert_eq!(messages[0].tokens.reasoning, 5);
+        // Second message: delta from 50→80
+        assert_eq!(messages[1].tokens.input, 25);
+        assert_eq!(messages[1].tokens.output, 10);
+        assert_eq!(messages[1].tokens.cache_read, 5);
+        assert_eq!(messages[1].tokens.reasoning, 2);
+    }
+
+    #[test]
+    fn test_into_tokens_clamps_cached_to_input() {
+        // When cached > input (malformed data), cached should be clamped to input
+        // so that input + cache_read never exceeds the raw input value.
+        let totals = CodexTotals {
+            input: 50,
+            output: 30,
+            cached: 100, // More than input — malformed
+            reasoning: 5,
+        };
+        let tokens = totals.into_tokens();
+        assert_eq!(tokens.cache_read, 50); // Clamped to input
+        assert_eq!(tokens.input, 0); // input - clamped_cached = 0
+        assert_eq!(tokens.output, 30);
+        assert_eq!(tokens.reasoning, 5);
     }
 
     #[test]

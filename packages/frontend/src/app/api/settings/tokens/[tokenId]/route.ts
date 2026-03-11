@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { db, apiTokens } from "@/lib/db";
-import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
+import { revokePersonalToken } from "@/lib/auth/personalTokens";
 
 interface RouteParams {
   params: Promise<{ tokenId: string }>;
@@ -16,13 +15,9 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 
     const { tokenId } = await params;
 
-    // Delete token only if it belongs to the current user
-    const result = await db
-      .delete(apiTokens)
-      .where(and(eq(apiTokens.id, tokenId), eq(apiTokens.userId, session.id)))
-      .returning({ id: apiTokens.id });
+    const revoked = await revokePersonalToken(session.id, tokenId);
 
-    if (result.length === 0) {
+    if (!revoked) {
       return NextResponse.json({ error: "Token not found" }, { status: 404 });
     }
 

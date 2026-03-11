@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { db, apiTokens, users, submissions, dailyBreakdown } from "@/lib/db";
+import { db, apiTokens, submissions, dailyBreakdown } from "@/lib/db";
 import { eq, sql } from "drizzle-orm";
 import {
   validateSubmission,
   generateSubmissionHash,
   type SubmissionData,
 } from "@/lib/validation/submission";
+import { authenticatePersonalToken } from "@/lib/auth/personalTokens";
 import {
   mergeClientBreakdowns,
   recalculateDayTotals,
@@ -72,26 +73,19 @@ export async function POST(request: Request) {
     }
 
     const token = authHeader.slice(7);
+    const authResult = await authenticatePersonalToken(token, {
+      touchLastUsedAt: false,
+    });
 
-    const [tokenRecord] = await db
-      .select({
-        tokenId: apiTokens.id,
-        userId: apiTokens.userId,
-        username: users.username,
-        expiresAt: apiTokens.expiresAt,
-      })
-      .from(apiTokens)
-      .innerJoin(users, eq(apiTokens.userId, users.id))
-      .where(eq(apiTokens.token, token))
-      .limit(1);
-
-    if (!tokenRecord) {
+    if (authResult.status === "invalid") {
       return NextResponse.json({ error: "Invalid API token" }, { status: 401 });
     }
 
-    if (tokenRecord.expiresAt && tokenRecord.expiresAt < new Date()) {
+    if (authResult.status === "expired") {
       return NextResponse.json({ error: "API token has expired" }, { status: 401 });
     }
+
+    const tokenRecord = authResult;
 
     // ========================================
     // STEP 2: Parse and Validate
@@ -149,7 +143,7 @@ export async function POST(request: Request) {
       // ------------------------------------------
       // STEP 3a: Get or create user's submission
       // ------------------------------------------
-      let [existingSubmission] = await tx
+      const [existingSubmission] = await tx
         .select({ id: submissions.id })
         .from(submissions)
         .where(eq(submissions.userId, tokenRecord.userId))
