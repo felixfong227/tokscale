@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, apiTokens, users } from "@/lib/db";
-import { generateApiToken } from "@/lib/auth/utils";
+import { generateApiToken, hashToken } from "@/lib/auth/utils";
 
 export interface PersonalTokenListItem {
   id: string;
@@ -64,11 +64,12 @@ export async function issuePersonalToken({
 }: IssuePersonalTokenInput): Promise<IssuedPersonalToken> {
   if (!ensureUniqueName) {
     const token = generateApiToken();
+    const tokenHashed = hashToken(token);
     const [createdToken] = await db
       .insert(apiTokens)
       .values({
         userId,
-        token,
+        token: tokenHashed,
         name,
         expiresAt,
       })
@@ -108,11 +109,12 @@ export async function issuePersonalToken({
       existingTokens.map((token) => token.name)
     );
     const token = generateApiToken();
+    const tokenHashed = hashToken(token);
     const [createdToken] = await tx
       .insert(apiTokens)
       .values({
         userId,
-        token,
+        token: tokenHashed,
         name: finalName,
         expiresAt,
       })
@@ -167,9 +169,12 @@ export async function authenticatePersonalToken(
     return { status: "invalid" };
   }
 
+  const tokenHashed = hashToken(token);
+
   const result = await db
     .select({
       tokenId: apiTokens.id,
+      tokenValue: apiTokens.token,
       userId: apiTokens.userId,
       username: users.username,
       displayName: users.displayName,
@@ -179,7 +184,7 @@ export async function authenticatePersonalToken(
     })
     .from(apiTokens)
     .innerJoin(users, eq(apiTokens.userId, users.id))
-    .where(eq(apiTokens.token, token))
+    .where(or(eq(apiTokens.token, tokenHashed), eq(apiTokens.token, token)))
     .limit(1);
 
   if (result.length === 0) {
@@ -187,15 +192,23 @@ export async function authenticatePersonalToken(
   }
 
   const record = result[0];
+  const isLegacyPlaintext = record.tokenValue === token;
 
   if (record.expiresAt && record.expiresAt <= new Date()) {
     return { status: "expired" };
   }
 
+  const updates: Record<string, unknown> = {};
   if (options.touchLastUsedAt !== false) {
+    updates.lastUsedAt = new Date();
+  }
+  if (isLegacyPlaintext) {
+    updates.token = tokenHashed;
+  }
+  if (Object.keys(updates).length > 0) {
     await db
       .update(apiTokens)
-      .set({ lastUsedAt: new Date() })
+      .set(updates)
       .where(eq(apiTokens.id, record.tokenId));
   }
 

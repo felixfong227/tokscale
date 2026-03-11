@@ -30,6 +30,7 @@ const mockState = vi.hoisted(() => {
 
   const eq = vi.fn(() => "eq");
   const and = vi.fn(() => "and");
+  const or = vi.fn(() => "or");
   const desc = vi.fn(() => "desc");
   const sql = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({
     strings,
@@ -104,6 +105,7 @@ const mockState = vi.hoisted(() => {
     tables,
     eq,
     and,
+    or,
     desc,
     sql,
     insertValues,
@@ -125,6 +127,7 @@ const mockState = vi.hoisted(() => {
       db.transaction.mockClear();
       eq.mockClear();
       and.mockClear();
+      or.mockClear();
       desc.mockClear();
       sql.mockClear();
     },
@@ -144,6 +147,7 @@ const mockState = vi.hoisted(() => {
 });
 
 const generateApiToken = vi.fn(() => "tt_test_token");
+const hashToken = vi.fn((token: string) => `hashed_${token}`);
 
 vi.mock("@/lib/db", () => ({
   db: mockState.db,
@@ -154,12 +158,14 @@ vi.mock("@/lib/db", () => ({
 vi.mock("drizzle-orm", () => ({
   eq: mockState.eq,
   and: mockState.and,
+  or: mockState.or,
   desc: mockState.desc,
   sql: mockState.sql,
 }));
 
 vi.mock("@/lib/auth/utils", () => ({
   generateApiToken,
+  hashToken,
 }));
 
 type ModuleExports = typeof import("../../src/lib/auth/personalTokens");
@@ -181,6 +187,8 @@ beforeEach(() => {
   mockState.reset();
   generateApiToken.mockClear();
   generateApiToken.mockReturnValue("tt_test_token");
+  hashToken.mockClear();
+  hashToken.mockImplementation((token: string) => `hashed_${token}`);
   vi.useRealTimers();
 });
 
@@ -213,7 +221,7 @@ describe("personal token service", () => {
     expect(mockState.insertValues[0]).toMatchObject({
       userId: "user-1",
       name: "CLI",
-      token: "tt_test_token",
+      token: "hashed_tt_test_token",
       expiresAt: null,
     });
     expect(mockState.db.transaction).toHaveBeenCalledTimes(1);
@@ -318,6 +326,7 @@ describe("personal token service", () => {
     mockState.pushSelectResult([
       {
         tokenId: "token-1",
+        tokenValue: "hashed_tt_test_token",
         userId: "user-1",
         username: "alice",
         displayName: "Alice",
@@ -341,6 +350,7 @@ describe("personal token service", () => {
     mockState.pushSelectResult([
       {
         tokenId: "token-1",
+        tokenValue: "hashed_tt_test_token",
         userId: "user-1",
         username: "alice",
         displayName: "Alice",
@@ -360,6 +370,7 @@ describe("personal token service", () => {
     mockState.pushSelectResult([
       {
         tokenId: "token-1",
+        tokenValue: "hashed_tt_test_token",
         userId: "user-1",
         username: "alice",
         displayName: "Alice",
@@ -386,6 +397,7 @@ describe("personal token service", () => {
     mockState.pushSelectResult([
       {
         tokenId: "token-1",
+        tokenValue: "hashed_tt_test_token",
         userId: "user-1",
         username: "alice",
         displayName: "Alice",

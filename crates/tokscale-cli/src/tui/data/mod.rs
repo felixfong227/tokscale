@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use chrono::{Datelike, Local, NaiveDate};
-use tokio::runtime::Runtime;
+use tokio::runtime::{Handle, Runtime};
 
 use tokscale_core::sessions::UnifiedMessage;
 use tokscale_core::{
@@ -141,19 +141,27 @@ impl DataLoader {
             sources.push("synthetic".to_string());
         }
 
-        let rt = Runtime::new()?;
-        let messages = rt
-            .block_on(async {
-                parse_local_unified_messages(LocalParseOptions {
-                    home_dir: Some(home),
-                    clients: Some(sources),
-                    since: self.since.clone(),
-                    until: self.until.clone(),
-                    year: self.year.clone(),
+        let opts = LocalParseOptions {
+            home_dir: Some(home),
+            clients: Some(sources),
+            since: self.since.clone(),
+            until: self.until.clone(),
+            year: self.year.clone(),
+        };
+
+        let messages = if Handle::try_current().is_ok() {
+            std::thread::scope(|s| {
+                s.spawn(|| {
+                    let rt = Runtime::new().map_err(|e| e.to_string())?;
+                    rt.block_on(parse_local_unified_messages(opts))
                 })
-                .await
+                .join()
+                .unwrap_or_else(|_| Err("data loader thread panicked".to_string()))
             })
-            .map_err(anyhow::Error::msg)?;
+        } else {
+            Runtime::new()?.block_on(parse_local_unified_messages(opts))
+        }
+        .map_err(anyhow::Error::msg)?;
 
         self.aggregate_messages(messages, group_by)
     }
