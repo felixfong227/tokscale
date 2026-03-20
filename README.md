@@ -67,7 +67,7 @@
 | <img width="48px" src=".github/assets/client-roocode.png" alt="Roo Code" /> | [Roo Code](https://github.com/RooCodeInc/Roo-Code) | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/rooveterinaryinc.roo-cline/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-kilocode.png" alt="Kilo" /> | [Kilo](https://github.com/Kilo-Org/kilocode) | `~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-mux.png" alt="Mux" /> | [Mux](https://github.com/coder/mux) | `~/.mux/sessions/` | ✅ Yes |
-| GitHub | [GitHub Copilot](https://github.com/features/copilot) | VS Code `workspaceStorage/.../GitHub.copilot-chat/debug-logs/` JSONL files | ✅ Yes |
+| GitHub | [GitHub Copilot](https://github.com/features/copilot) | VS Code `workspaceStorage/.../GitHub.copilot-chat/debug-logs/` JSONL files ([setup required](#github-copilot)) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-synthetic.png" alt="Synthetic" /> | [Synthetic](https://synthetic.new/) | Re-attributed from other sources via `hf:` model prefix or `synthetic` provider (+ [Octofriend](https://github.com/synthetic-lab/octofriend): `~/.local/share/octofriend/sqlite.db`) | ✅ Yes |
 
 Get real-time pricing calculations using [🚅 LiteLLM's pricing data](https://github.com/BerriAI/litellm), with support for tiered pricing models and cache token discounts.
@@ -1100,16 +1100,38 @@ Mux stores cumulative per-session token usage in `session-usage.json` files. Eac
 
 ### GitHub Copilot
 
-Location:
+> **⚠️ Setup required — Copilot does not write debug logs by default.**
+> You must enable two VS Code settings **before** any sessions will be captured.
+> Previous sessions that occurred before enabling these settings are **lost forever** — there is no way to retroactively generate logs for past usage.
+
+#### 1. Enable debug logging in VS Code
+
+Open **Settings** (`Cmd+,` / `Ctrl+,`) → search for `agentDebugLog` → enable both:
+
+```jsonc
+// settings.json
+{
+  "github.copilot.chat.agentDebugLog.enabled": true,
+  "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
+}
+```
+
+#### 2. Restart VS Code
+
+After changing the settings, **restart VS Code** (or reload the window with `Developer: Reload Window`). The Copilot extension will only start writing JSONL debug logs after the restart.
+
+#### 3. Use Copilot as normal
+
+From this point forward, every Copilot chat and agent session will produce debug-log JSONL files that tokscale can read. Run `tokscale` and you should see your Copilot usage appear automatically.
+
+---
+
+**Log locations:**
 - macOS: `~/Library/Application Support/Code/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
 - Linux (best-effort): `~/.config/Code/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
 - VS Code server (best-effort): `~/.vscode-server/data/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
 
-Requirements:
-- Enable `github.copilot.chat.agentDebugLog.enabled`
-- Enable `github.copilot.chat.agentDebugLog.fileLogging.enabled`
-
-Tokscale currently reads `llm_request` events from the Copilot debug-log JSONL stream and extracts:
+Tokscale reads `llm_request` events from the Copilot debug-log JSONL stream and extracts:
 - `attrs.model` (or the model suffix from `name`, e.g. `chat:gpt-5.4`)
 - `attrs.inputTokens`
 - `attrs.outputTokens`
