@@ -61,7 +61,7 @@ pub fn parse_copilot_file(path: &Path) -> Vec<UnifiedMessage> {
             .unwrap_or_else(|| "unknown".to_string());
 
         let provider = extract_string(attrs.and_then(|attrs| attrs.get("provider")))
-            .and_then(|raw| canonical_provider(&raw).or(Some(raw)))
+            .and_then(|raw| canonical_provider(&raw))
             .or_else(|| inferred_provider_from_model(&model).map(str::to_string))
             .unwrap_or_else(|| "github_copilot".to_string());
 
@@ -147,18 +147,23 @@ fn agent_from_path(path: &Path) -> Option<String> {
 }
 
 fn strip_uuid_suffix(value: &str) -> &str {
-    if value.len() <= 37 {
+    let Some(suffix_start) = value.len().checked_sub(36) else {
         return value;
-    }
+    };
 
-    let suffix_start = value.len() - 36;
-    if value.as_bytes()[suffix_start - 1] != b'-' {
+    let Some(candidate) = value.get(suffix_start..) else {
         return value;
-    }
+    };
 
-    let candidate = &value[suffix_start..];
+    let Some(prefix) = value
+        .get(..suffix_start)
+        .and_then(|prefix_with_dash| prefix_with_dash.strip_suffix('-'))
+    else {
+        return value;
+    };
+
     if is_uuid(candidate) {
-        &value[..suffix_start - 1]
+        prefix
     } else {
         value
     }
@@ -256,5 +261,27 @@ mod tests {
         assert_eq!(messages[0].provider_id, "openai");
         assert_eq!(messages[0].tokens.cache_read, 2);
         assert_eq!(messages[0].tokens.reasoning, 1);
+    }
+
+    #[test]
+    fn test_parse_copilot_file_prefers_model_inference_to_unknown_provider() {
+        let dir = TempDir::new().unwrap();
+        let path = write_log(
+            &dir,
+            "debug-logs/session-provider/main.jsonl",
+            "{\"type\":\"llm_request\",\"name\":\"chat:gpt-5.4\",\"attrs\":{\"provider\":\"custom-backend-2\",\"inputTokens\":10,\"outputTokens\":5}}\n",
+        );
+
+        let messages = parse_copilot_file(&path);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].provider_id, "openai");
+    }
+
+    #[test]
+    fn test_strip_uuid_suffix_handles_unicode_prefix() {
+        let value = "exploré-12345678-1234-1234-1234-123456789abc";
+
+        assert_eq!(strip_uuid_suffix(value), "exploré");
     }
 }
