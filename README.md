@@ -324,6 +324,9 @@ tokscale --kilocode
 # Show only Mux usage
 tokscale --mux
 
+# Show only GitHub Copilot usage
+tokscale --copilot
+
 # Show only Synthetic (synthetic.new) usage
 tokscale --synthetic
 
