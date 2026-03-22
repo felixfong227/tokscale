@@ -67,6 +67,7 @@
 | <img width="48px" src=".github/assets/client-roocode.png" alt="Roo Code" /> | [Roo Code](https://github.com/RooCodeInc/Roo-Code) | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/rooveterinaryinc.roo-cline/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-kilocode.png" alt="Kilo" /> | [Kilo](https://github.com/Kilo-Org/kilocode) | `~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks/` (+ server: `~/.vscode-server/data/User/globalStorage/kilocode.kilo-code/tasks/`) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-mux.png" alt="Mux" /> | [Mux](https://github.com/coder/mux) | `~/.mux/sessions/` | ✅ Yes |
+| GitHub | [GitHub Copilot](https://github.com/features/copilot) | VS Code `workspaceStorage/.../GitHub.copilot-chat/debug-logs/` JSONL files ([setup required](#github-copilot)) | ✅ Yes |
 | <img width="48px" src=".github/assets/client-synthetic.png" alt="Synthetic" /> | [Synthetic](https://synthetic.new/) | Re-attributed from other sources via `hf:` model prefix or `synthetic` provider (+ [Octofriend](https://github.com/synthetic-lab/octofriend): `~/.local/share/octofriend/sqlite.db`) | ✅ Yes |
 
 Get real-time pricing calculations using [🚅 LiteLLM's pricing data](https://github.com/BerriAI/litellm), with support for tiered pricing models and cache token discounts.
@@ -132,7 +133,7 @@ In the age of AI-assisted development, **tokens are the new energy**. They power
   - GitHub-style contribution graph with 9 color themes
   - Real-time filtering and sorting
   - Zero flicker rendering
-- **Multi-platform support** - Track usage across OpenCode, Claude Code, Codex CLI, Cursor IDE, Gemini CLI, Amp, Droid, OpenClaw, Pi, Kimi CLI, Qwen CLI, Roo Code, Kilo, Mux, and Synthetic
+- **Multi-platform support** - Track usage across OpenCode, Claude Code, Codex CLI, Cursor IDE, Gemini CLI, Amp, Droid, OpenClaw, Pi, Kimi CLI, Qwen CLI, Roo Code, Kilo, Mux, GitHub Copilot, and Synthetic
 - **Real-time pricing** - Fetches current pricing from LiteLLM with 1-hour disk cache; automatic OpenRouter fallback and Cursor model pricing for newly released models
 - **Detailed breakdowns** - Input, output, cache read/write, and reasoning token tracking
 - **Native Rust core** - All parsing and aggregation done in Rust for 10x faster processing
@@ -322,6 +323,9 @@ tokscale --kilocode
 
 # Show only Mux usage
 tokscale --mux
+
+# Show only GitHub Copilot usage
+tokscale --copilot
 
 # Show only Synthetic (synthetic.new) usage
 tokscale --synthetic
@@ -858,6 +862,7 @@ AI coding tools store their session data in cross-platform locations. Most tools
 | Roo Code | `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks/` | `%USERPROFILE%\.config\Code\User\globalStorage\rooveterinaryinc.roo-cline\tasks\` | VS Code globalStorage task logs |
 | Kilo | `~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks/` | `%USERPROFILE%\.config\Code\User\globalStorage\kilocode.kilo-code\tasks\` | VS Code globalStorage task logs |
 | Mux | `~/.mux/sessions/` | `%USERPROFILE%\.mux\sessions\` | Same path on all platforms |
+| GitHub Copilot | macOS: `~/Library/Application Support/Code/User/workspaceStorage/`; Linux/server best-effort: `~/.config/Code/User/workspaceStorage/`, `~/.vscode-server/data/User/workspaceStorage/` | Experimental | VS Code Copilot debug logs under `GitHub.copilot-chat/debug-logs/` |
 | Synthetic | Re-attributed from other sources | Re-attributed from other sources | Detects `hf:` model prefix + `synthetic` provider |
 
 > **Note**: On Windows, `~` expands to `%USERPROFILE%` (e.g., `C:\Users\YourName`). These tools intentionally use Unix-style paths (like `.local/share`) even on Windows for cross-platform consistency, rather than Windows-native paths like `%APPDATA%`.
@@ -1095,6 +1100,47 @@ Mux stores cumulative per-session token usage in `session-usage.json` files. Eac
 - `input`, `cached` (cache reads), `cacheCreate` (cache writes), `output`, `reasoning`
 - Model names use `provider:model` format (e.g., `anthropic:claude-opus-4-6`) — tokscale strips the provider prefix for model identification
 - Sub-agent usage is automatically rolled up into parent sessions by Mux, so there is no double-counting
+
+### GitHub Copilot
+
+> **⚠️ Setup required — Copilot does not write debug logs by default.**
+> You must enable two VS Code settings **before** any sessions will be captured.
+> Previous sessions that occurred before enabling these settings are **lost forever** — there is no way to retroactively generate logs for past usage.
+
+#### 1. Enable debug logging in VS Code
+
+Open **Settings** (`Cmd+,` / `Ctrl+,`) → search for `agentDebugLog` → enable both:
+
+```jsonc
+// settings.json
+{
+  "github.copilot.chat.agentDebugLog.enabled": true,
+  "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
+}
+```
+
+#### 2. Restart VS Code
+
+After changing the settings, **restart VS Code** (or reload the window with `Developer: Reload Window`). The Copilot extension will only start writing JSONL debug logs after the restart.
+
+#### 3. Use Copilot as normal
+
+From this point forward, every Copilot chat and agent session will produce debug-log JSONL files that tokscale can read. Run `tokscale` and you should see your Copilot usage appear automatically.
+
+---
+
+**Log locations:**
+- macOS: `~/Library/Application Support/Code/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
+- Linux (best-effort): `~/.config/Code/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
+- VS Code server (best-effort): `~/.vscode-server/data/User/workspaceStorage/{WORKSPACE_ID}/GitHub.copilot-chat/debug-logs/{SESSION_ID}/*.jsonl`
+
+Tokscale reads `llm_request` events from the Copilot debug-log JSONL stream and extracts:
+- `attrs.model` (or the model suffix from `name`, e.g. `chat:gpt-5.4`)
+- `attrs.inputTokens`
+- `attrs.outputTokens`
+- optional cache/reasoning-style token fields when present
+
+The local JSONL logs do not currently expose authoritative provider or billing fields, so tokscale infers the provider from the model name for pricing estimates.
 
 ### Synthetic (synthetic.new)
 

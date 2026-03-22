@@ -4,7 +4,7 @@
 
 use rayon::prelude::*;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::clients::ClientId;
@@ -78,6 +78,15 @@ pub fn headless_roots(home_dir: &str) -> Vec<PathBuf> {
     roots
 }
 
+fn path_has_component(path: &Path, needle: &str) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(needle)
+    })
+}
+
 /// Scan a single directory for session files
 pub fn scan_directory(root: &str, pattern: &str) -> Vec<PathBuf> {
     if !std::path::Path::new(root).exists() {
@@ -140,6 +149,11 @@ pub fn scan_directory(root: &str, pattern: &str) -> Vec<PathBuf> {
                 "wire.jsonl" => file_name == "wire.jsonl",
                 "ui_messages.json" => file_name == "ui_messages.json",
                 "session-usage.json" => file_name == "session-usage.json",
+                "copilot-debug.jsonl" => {
+                    file_name.ends_with(".jsonl")
+                        && path_has_component(path, "GitHub.copilot-chat")
+                        && path_has_component(path, "debug-logs")
+                }
                 _ => false,
             }
         })
@@ -304,6 +318,22 @@ pub fn scan_all_clients(home_dir: &str, clients: &[String]) -> ScanResult {
             ClientId::KiloCode,
             server_path,
             ClientId::KiloCode.data().pattern,
+        ));
+    }
+
+    if enabled.contains(&ClientId::Copilot) {
+        let linux_path = format!("{}/.config/Code/User/workspaceStorage", home_dir);
+        tasks.push((
+            ClientId::Copilot,
+            linux_path,
+            ClientId::Copilot.data().pattern,
+        ));
+
+        let server_path = format!("{}/.vscode-server/data/User/workspaceStorage", home_dir);
+        tasks.push((
+            ClientId::Copilot,
+            server_path,
+            ClientId::Copilot.data().pattern,
         ));
     }
 
@@ -476,6 +506,28 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_directory_copilot_debug_pattern() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let debug_logs = root.join("ws/GitHub.copilot-chat/debug-logs/session-1");
+        let transcripts = root.join("ws/GitHub.copilot-chat/transcripts");
+        fs::create_dir_all(&debug_logs).unwrap();
+        fs::create_dir_all(&transcripts).unwrap();
+
+        File::create(debug_logs.join("main.jsonl")).unwrap();
+        File::create(
+            debug_logs.join("runSubagent-Explore-12345678-1234-1234-1234-123456789abc.jsonl"),
+        )
+        .unwrap();
+        File::create(transcripts.join("session-1.jsonl")).unwrap();
+
+        let files = scan_directory(root.to_str().unwrap(), "copilot-debug.jsonl");
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|path| path.to_string_lossy().contains("debug-logs")));
+    }
+
+    #[test]
     fn test_scan_directory_nested() {
         let dir = TempDir::new().unwrap();
         let path = dir.path();
@@ -605,6 +657,23 @@ mod tests {
         fs::create_dir_all(&server).unwrap();
         File::create(local.join("ui_messages.json")).unwrap();
         File::create(server.join("ui_messages.json")).unwrap();
+    }
+
+    fn setup_mock_copilot_dir(base: &std::path::Path) {
+        let debug_logs = base.join(
+            "Library/Application Support/Code/User/workspaceStorage/ws-1/GitHub.copilot-chat/debug-logs/session-123",
+        );
+        let transcripts = base.join(
+            "Library/Application Support/Code/User/workspaceStorage/ws-1/GitHub.copilot-chat/transcripts",
+        );
+        fs::create_dir_all(&debug_logs).unwrap();
+        fs::create_dir_all(&transcripts).unwrap();
+        File::create(debug_logs.join("main.jsonl")).unwrap();
+        File::create(
+            debug_logs.join("runSubagent-Explore-12345678-1234-1234-1234-123456789abc.jsonl"),
+        )
+        .unwrap();
+        File::create(transcripts.join("session-123.jsonl")).unwrap();
     }
 
     #[test]
@@ -852,5 +921,19 @@ mod tests {
             .get(ClientId::KiloCode)
             .iter()
             .all(|p| p.ends_with("ui_messages.json")));
+    }
+
+    #[test]
+    fn test_scan_all_clients_copilot() {
+        let dir = TempDir::new().unwrap();
+        let home = dir.path();
+        setup_mock_copilot_dir(home);
+
+        let result = scan_all_clients(home.to_str().unwrap(), &["copilot".to_string()]);
+        assert_eq!(result.get(ClientId::Copilot).len(), 2);
+        assert!(result
+            .get(ClientId::Copilot)
+            .iter()
+            .all(|path| path.to_string_lossy().contains("debug-logs")));
     }
 }
